@@ -447,11 +447,12 @@
     // Reloading would throw away a form being filled in: wait until it is closed
     if ($('layer').firstChild) return void setTimeout(offerReload, 3000);
     const box = document.createElement('div');
-    box.className = 'update'; box.setAttribute('role', 'alertdialog'); box.setAttribute('aria-label', 'New version');
-    box.innerHTML = `<div class="brand">${logo}New version ready</div><p>Wishbox has been updated. Reload to get the latest version.</p>
-      <button class="btn primary" id="upd-go">Reload app</button><button class="link-btn" id="upd-later">Later</button>`;
+    box.className = 'update-back';
+    box.innerHTML = `<div class="update" role="alertdialog" aria-modal="true" aria-label="New version"><div class="brand">${logo}New version ready</div><p>Wishbox has been updated. Reload to get the latest version.</p>
+      <button class="btn primary" id="upd-go">Reload app</button><button class="link-btn" id="upd-later">Later</button></div>`;
     document.body.appendChild(box);
     $('upd-go').onclick = () => location.reload();
+    $('upd-go').focus();
     // "Later" hides it until the app is next brought to the front
     $('upd-later').onclick = () => { box.remove(); offered = false; myLater = Date.now(); };
   }
