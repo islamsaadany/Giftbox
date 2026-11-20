@@ -63,6 +63,23 @@
     render();
   }
 
+  /* The "more" button: the list's less frequent actions */
+  function listMenu() {
+    const l = cur();
+    open(`<h2>${esc(l.name)}</h2><div class="menu">
+      <button class="btn" id="edit-list">Rename list</button>
+      ${full(l) ? '<button class="btn" id="collab">Collaborators</button>' : ''}
+      <a class="btn" href="/l/${esc(l.slug)}" target="_blank" rel="noopener" data-close>Preview as guest</a>
+      ${full(l) ? '' : '<button class="btn danger" id="leave">Leave list</button>'}
+    </div><div class="actions"><button class="btn ghost" data-close>Close</button></div>`, sh => {
+      const on = (id, f) => { const e = sh.querySelector('#' + id); if (e) e.onclick = () => { close(); f(); }; };
+      on('edit-list', () => listForm(l));
+      on('collab', () => collabForm());
+      on('leave', () => { const l = cur(); confirmBox('Leave “' + l.name + '”?', 'You won’t see or edit this list any more. ' + l.owner + ' can add you again.', 'Leave list',
+      () => act(() => call('DELETE', `/api/admin/lists/${l.id}/collaborators/${l.collaborators.find(c => c.name === me).id}`), 'You left the list')); });
+    });
+  }
+
   function statusPill(it) {
     const r = resN(it), lf = leftOf(it);
     if (!r) return '<span class="pill ok">Available</span>';
@@ -80,12 +97,17 @@
       const taken = l.items.filter(i => leftOf(i) === 0).length, avail = l.items.length - taken;
       const shown = l.items.filter(i => filter === 'all' || (filter === 'taken' ? resN(i) > 0 : leftOf(i) > 0))
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })); // A–Z, like the guest page
-      h += `<section class="panel">
-        <div class="panel-head"><div><div class="eyebrow">Gift list${l.mine ? '' : ' · shared by ' + esc(l.owner)}</div><h2>${esc(l.name)}</h2>${others(l).length ? `<p class="hint">${l.mine || viewing ? 'Shared with' : 'Also shared with'} ${esc(others(l).join(', '))}</p>` : ''}</div>
-          <div class="share"><button class="btn ghost" id="edit-list">Rename</button><button class="btn primary" id="add-item">+ Add item</button></div></div>
-        <div class="stats"><span><b>${l.items.length}</b>items</span><span><b>${avail}</b>available</span><span><b>${taken}</b>reserved</span></div>
-        <div class="share"><button class="btn" id="copy-link">Copy guest link</button><a class="btn ghost" href="/l/${esc(l.slug)}" target="_blank" rel="noopener">Preview as guest</a>${full(l) ? '<button class="btn ghost" id="collab">Collaborators</button>' : '<button class="btn ghost" id="leave">Leave list</button>'}</div>
-        <div class="filters" role="group" aria-label="Filter">${['all', 'available', 'taken'].map(f => `<button class="chip" data-filter="${f}" aria-current="${filter === f}">${f === 'all' ? 'All' : f === 'available' ? 'Available' : 'Reserved'}</button>`).join('')}</div>
+      // Each filter button carries the number of gifts it shows
+      const counts = { all: l.items.length, available: avail, taken: l.items.filter(i => resN(i) > 0).length };
+      const linkIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>';
+      const eyeIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+      h += `<section class="lpanel">
+        <div class="lp-title"><div class="lp-eyebrow">${l.mine ? 'Gift list' : 'Shared by ' + esc(l.owner)}</div><h2>${esc(l.name)}</h2>${others(l).length ? `<p class="lp-with">${l.mine || viewing ? 'Shared with' : 'Also shared with'} ${esc(others(l).join(', '))}</p>` : ''}</div>
+        <button class="lp-more" id="more" aria-label="More actions for this list" aria-haspopup="dialog"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+        <button class="btn primary lp-add" id="add-item">+ Add item</button>
+        <div class="lp-rule"></div>
+        <div class="lp-filters" role="group" aria-label="Filter">${[['all', 'All'], ['available', 'Available'], ['taken', 'Reserved']].map(([f, t]) => `<button class="lp-chip" data-filter="${f}" aria-pressed="${filter === f}">${t} <b>${counts[f]}</b></button>`).join('')}</div>
+        <div class="lp-links"><button class="lp-link lp-copy" id="copy-link">${linkIcon}Copy guest link</button><a class="lp-link lp-preview" href="/l/${esc(l.slug)}" target="_blank" rel="noopener">${eyeIcon}Preview</a></div>
       </section>`;
       if (!l.items.length) h += `<div class="empty"><h3>This list is empty</h3>Tap “Add item” to add the first gift: a name, price, shop link and photo.</div>`;
       else if (!shown.length) h += `<div class="empty">Nothing here for this filter.</div>`;
@@ -108,10 +130,7 @@
     on('theme', themePicker);
     on('nav', () => { view = view === 'users' ? 'lists' : 'users'; viewing = null; lists = []; pick(null); refresh().catch(e => toast(problem(e))); });
     on('new-list', () => listForm());
-    on('edit-list', () => listForm(cur()));
-    on('collab', () => collabForm());
-    on('leave', () => { const l = cur(); confirmBox('Leave “' + l.name + '”?', 'You won’t see or edit this list any more. ' + l.owner + ' can add you again.', 'Leave list',
-      () => act(() => call('DELETE', `/api/admin/lists/${l.id}/collaborators/${l.collaborators.find(c => c.name === me).id}`), 'You left the list')); });
+    on('more', listMenu);
     on('add-item', () => itemForm());
     on('copy-link', () => {
       const t = guestLink(cur());
