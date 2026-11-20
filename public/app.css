@@ -147,7 +147,10 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .segsort button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
 /* admin list panel: two rows on the app's soft colour. Name with "more" and Add item, then the filters
    (each with its count) and the guest-link actions. On a phone, Add item drops down beside Copy guest link. */
-.lpanel{position:relative;background:var(--accent-soft);border-radius:20px;padding:18px 20px;display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"title more add" "rule rule rule" "chips links links";gap:16px 8px;align-items:center}
+/* Collapsing: --p runs from 0 (tall) to 1 (slim row); admin.js sets it with the panel height as the page scrolls. */
+/* a little wider than the cards so their soft shadow doesn't peek out beside the pinned panel */
+.lp-stick{position:sticky;top:0;z-index:9;background:var(--bg);padding:max(8px,env(safe-area-inset-top,0px)) 6px 0;margin:-8px -6px 0}
+.lpanel{--p:0;overflow:hidden;align-content:start;position:relative;background:var(--accent-soft);border-radius:calc(20px - 4px*var(--p));padding:18px 20px;display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"title more add" "rule rule rule" "chips links links";gap:16px 8px;align-items:center}
 .lp-title{grid-area:title;min-width:0;display:grid;gap:2px}
 .lp-eyebrow{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-deep)}
 .lpanel h2{font-size:24px;line-height:1.15;overflow-wrap:anywhere}
@@ -172,6 +175,24 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
   .lp-copy{grid-area:copy;justify-content:center;height:42px;border-radius:999px;background:var(--surface);color:var(--ink);font-size:14px}
   .lp-copy svg{display:none}
   .lp-add{height:42px}
+}
+.lp-eyebrow,.lp-with,.lp-rule,.lp-links,.lp-filters,.lpanel:not(.m) h2{opacity:calc(1 - 2.4*var(--p))}
+/* "m": the name is one line and fits the slim row, so it shrinks and slides there instead of fading */
+.lpanel.m h2{width:max-content;white-space:nowrap;transform-origin:0 0;transform:translateY(calc(var(--ndy,0px)*var(--p))) scale(calc(1 - .2083*var(--p)))}
+.lp-slim{position:absolute;top:0;left:20px;right:var(--rsv,120px);height:56px;display:flex;align-items:center;pointer-events:none;opacity:calc(2.5*var(--p) - 1.125)}
+.lp-slim b{font-family:var(--display);font-size:19px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lpanel.m .lp-slim{display:none}
+.lp-more{transform:translateY(calc(var(--mdy,0px)*var(--p)))}
+.lp-add{transform:translateY(calc(var(--ady,0px)*var(--p)))}
+.lp-plus{display:none}
+/* filters kept pinned under the slim row */
+.lpanel.pinf .lp-filters{opacity:1;transform:translateY(calc(var(--fdy,0px)*var(--p)))}
+@media (max-width:599px){
+  .lp-slim{left:16px}
+  .lp-add{transform:none}
+  .lp-add,.lp-copy{opacity:calc(1 - 2.4*var(--p))}
+  .lp-plus{display:grid;place-items:center;position:absolute;top:8px;right:64px;width:40px;height:40px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-ink);opacity:calc(2.5*var(--p) - 1.125);pointer-events:none}
+  .lpanel.slimmed .lp-plus{pointer-events:auto}
 }
 .menu{display:grid;gap:8px}
 .menu .btn{text-align:left;padding:12px 14px}
