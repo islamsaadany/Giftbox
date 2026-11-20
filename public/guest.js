@@ -1,11 +1,13 @@
 (function () {
-  const { shopBtn, gift, logo, esc, money, $, api, problem, open, close, busy } = WB;
+  const { gift, logo, esc, money, $, api, problem, open, close, busy } = WB;
   const slug = location.pathname.split('/')[2] || '';
   const app = $('app'), hdr = $('hdr');
   let list = null, sort = 'az'; // 'az' | 'za' | 'low' | 'high'
 
   const priceLine = it => it.price === null ? '' : it.each ? `${money(it.price)} <span class="each">each</span>` : money(it.price);
   const pic = it => `<div class="pic">${it.photo ? `<img src="${esc(it.photo)}" alt="" loading="lazy">` : gift}${it.left > 1 ? `<span class="qty">${it.left} still needed</span>` : ''}</div>`;
+  // Always takes a line, so Reserve buttons line up across a row whether or not an item has a shop link
+  const shop = it => it.link ? `<a class="shoplink" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">View in shop</a>` : '<span class="shoplink none" aria-hidden="true">&nbsp;</span>';
 
   /* The header is one pink box fixed at the top. It starts tall (icon, "Wishbox", list name, message) and is
      squeezed by exactly as much as the page has been scrolled, until it is the slim bar (icon, name, gifts left).
@@ -104,7 +106,7 @@
     grid.innerHTML = sorted().map(it => `<article class="card">${pic(it)}<div class="card-body">
       <h3>${esc(it.name)}</h3>
       <div class="price">${priceLine(it)}</div>
-      <div class="row"><button class="btn primary" data-pick="${it.id}">Reserve</button>${shopBtn(it)}</div>
+      <div class="row"><button class="btn primary" data-pick="${it.id}">Reserve</button>${shop(it)}</div>
     </div></article>`).join('');
     grid.querySelectorAll('[data-pick]').forEach(b => (b.onclick = () => pickForm(list.items.find(i => String(i.id) === b.dataset.pick))));
   }
