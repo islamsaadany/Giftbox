@@ -1,6 +1,6 @@
 /* Layout: one narrow app column; admin = list switcher + item grid, guest = clean gift shelf */
 :root{
-  --bg:#F5F4F9; --surface:#FFFFFF; --ink:#211F36; --muted:#6A6782; --line:#E3E1EC;
+  --bg:#F5F4F9; --surface:#FFFFFF; --ink:#211F36; --muted:#6A6782; --line:#E3E1EC; --frame:#F0EEF6;
   --accent:#C93A64; --accent-ink:#FFFFFF; --accent-soft:#FBE7EE;
   --ok:#2F8A5B; --ok-soft:#E3F3EA; --taken:#8A5A12; --taken-soft:#FBF0DC;
   --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
@@ -9,7 +9,7 @@
   --danger:#C93A64; --logo:#C93A64; --logo-hi:#F06A92; --logo-lo:#A82C52;
 }
 @media (prefers-color-scheme:dark){:root{
-  --bg:#15141F; --surface:#1F1D2C; --ink:#EEEDF5; --muted:#A3A0B8; --line:#33304A;
+  --bg:#15141F; --surface:#1F1D2C; --ink:#EEEDF5; --muted:#A3A0B8; --line:#33304A; --frame:#2B2840;
   --accent:#F06A92; --accent-ink:#1A0D13; --accent-soft:#3A1E2A;
   --ok:#6CCB97; --ok-soft:#1C3328; --taken:#E7B661; --taken-soft:#3A2E17; --accent-deep:#F7A8BF; --danger:#F06A92; color-scheme:dark}}
 /* Colour themes: each user picks one, and their guests see it too. Pink is the default above.
@@ -199,18 +199,22 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 /* cards, on the guest and the admin page: soft, with the price as the main line */
 .guest .grid{margin-top:2px}
 .card{border:0;border-radius:18px;padding:8px;gap:8px;overflow:visible;box-shadow:0 1px 3px rgb(33 31 54 / .08)}
-.pic{border-radius:12px}
+/* The picture sits whole (not cropped) inside a soft tinted frame, so a photo with a white background still has
+   an edge against the white card. The frame is wider than tall to keep the card short. */
+.pic{border-radius:12px;aspect-ratio:4/3;background:var(--frame)}
+@supports not (aspect-ratio:1/1){.pic{padding-top:75%}}
+.pic img{inset:8px;top:8px;left:8px;width:calc(100% - 16px);height:calc(100% - 16px);object-fit:contain;border-radius:6px}
 .card-body{padding:0 4px 2px;gap:4px}
 .card h3{font-family:var(--body);font-size:13px;line-height:1.35;font-weight:500;letter-spacing:0;color:var(--muted)}
 .card .price{font-family:var(--display);font-size:17px;font-weight:700}
 .each{font-family:var(--body)}
 .qty{top:auto;right:auto;left:6px;bottom:6px;background:var(--surface);color:var(--ink);font-family:var(--body);font-size:11px;font-weight:600;padding:5px 8px;box-shadow:none}
-.row{gap:0;padding-top:4px}
-.row .btn{border-radius:999px;font-size:13px;padding:9px 8px}
+/* Reserve (or Edit) with the shop link as a small round button beside it */
+.row{flex-direction:row;gap:6px;padding:4px 0 2px}
+.row .btn{flex:1;min-width:0;border-radius:999px;font-size:13px;padding:9px 8px}
+.shopbtn{flex:none;width:38px;display:grid;place-items:center;border-radius:999px;background:var(--accent-soft);color:var(--accent-deep)}
 .card .meta{margin-bottom:2px}
 .who-list{margin:4px 0 2px}
-.shoplink{display:block;font-size:12px;font-weight:600;text-align:center;padding:9px 0 5px;color:var(--accent-deep);text-decoration:none}
-.shoplink.none{visibility:hidden}
 
 /* reserve counter */
 .step-row{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--accent-soft);border-radius:12px;padding:12px}
