@@ -246,6 +246,14 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 .actions .left{margin-right:auto}
 .linkbox{font-size:13px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;overflow-wrap:anywhere;user-select:all}
+/* "New version ready": a card in the middle of the screen, with the page blurred and dimmed behind it */
+.update-back{position:fixed;inset:0;z-index:15;display:grid;place-items:center;padding:24px;background:rgb(10 8 20 / .32);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+@media (prefers-reduced-motion:no-preference){.update-back{animation:fadein .2s ease-out}@keyframes fadein{from{opacity:0}}}
+.update{width:min(320px,100%);display:grid;gap:12px;justify-items:stretch;text-align:center;
+  background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 18px 50px rgb(10 8 20 / .28)}
+.update .brand{justify-content:center}
+.update p{margin:0;color:var(--muted);font-size:14px}
+.update .btn{height:46px;border-radius:999px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
 .done{text-align:center;display:grid;gap:8px;justify-items:center}
 .done svg{width:44px;height:44px;color:var(--accent)}
