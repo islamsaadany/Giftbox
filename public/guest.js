@@ -2,7 +2,7 @@
   const { gift, logo, esc, money, $, api, problem, open, close, busy } = WB;
   const slug = location.pathname.split('/')[2] || '';
   const app = $('app'), hdr = $('hdr');
-  let list = null, sort = 'default';
+  let list = null, sort = 'az'; // 'az' | 'za' | 'low' | 'high'
 
   const priceLine = it => it.price === null ? '' : it.each ? `${money(it.price)} <span class="each">each</span>` : money(it.price);
   const pic = it => `<div class="pic">${it.photo ? `<img src="${esc(it.photo)}" alt="" loading="lazy">` : gift}${it.left > 1 ? `<span class="qty">${it.left} still needed</span>` : ''}</div>`;
@@ -76,10 +76,13 @@
     render();
   }
 
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+  const nameLabel = () => (sort === 'za' ? 'Name Z–A' : 'Name A–Z');
   function sorted() {
-    const av = list.items.slice();
-    // Items without a price go last
-    if (sort !== 'default') av.sort((a, b) => {
+    const av = list.items.slice().sort(byName);
+    if (sort === 'za') av.reverse();
+    // By price: items without a price go last, and equal prices stay in A–Z order
+    if (sort === 'low' || sort === 'high') av.sort((a, b) => {
       const x = a.price, y = b.price;
       if (x === null && y === null) return 0; if (x === null) return 1; if (y === null) return -1;
       return sort === 'low' ? x - y : y - x;
@@ -107,8 +110,8 @@
         ? `<div class="empty"><h3>Every gift has been reserved</h3>Thank you all. Nothing left to pick right now.</div>`
         : `<div class="empty"><h3>Nothing here yet</h3>Gifts will show up here soon.</div>`;
     } else {
-      h += `<div class="sortwrap"><div class="segsort" role="group" aria-label="Sort by price">${[['default', 'Default'], ['low', 'Lowest price'], ['high', 'Highest price']]
-        .map(([k, t]) => `<button data-sort="${k}" aria-pressed="${sort === k}">${t}</button>`).join('')}</div></div>
+      h += `<div class="sortwrap"><div class="segsort" role="group" aria-label="Sort">${[['name', nameLabel()], ['low', 'Lowest price'], ['high', 'Highest price']]
+        .map(([k, t]) => `<button data-sort="${k}" aria-pressed="${k === 'name' ? sort === 'az' || sort === 'za' : sort === k}">${t}</button>`).join('')}</div></div>
       <div class="grid" id="grid"></div>`;
     }
     app.innerHTML = h;
@@ -116,8 +119,11 @@
       cards();
       // Sorting only redraws the cards, so the page doesn't jump while the sort buttons are pinned
       app.querySelectorAll('[data-sort]').forEach(b => (b.onclick = () => {
-        sort = b.dataset.sort;
+        // The name button starts at A–Z; tapping it again while it's selected flips to Z–A and back
+        const k = b.dataset.sort;
+        sort = k !== 'name' ? k : sort === 'az' ? 'za' : 'az';
         app.querySelectorAll('[data-sort]').forEach(x => x.setAttribute('aria-pressed', x === b));
+        if (k === 'name') b.textContent = nameLabel();
         const grid = $('grid'), bar = app.querySelector('.sortwrap');
         // Hold the page height while the cards are redrawn, so the scroll position isn't lost
         grid.style.minHeight = grid.offsetHeight + 'px';
