@@ -51,7 +51,9 @@ function limiter(max, windowMs) {
 /* db: from ./db (query/tx/ready). photos: from ./photos (save/remove/url).
    admins: [{ name, password, admin }] from ADMIN_USERS (see ./admins). Those with admin !== false are
    the only ones who can create users. */
-function createApp({ db, photos, admins, trustProxy = 1 }) {
+function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '' }) {
+  // Address guests should use; empty means "whatever address the user is on"
+  publicUrl = /^https?:\/\/[^\s/]+/.test(publicUrl) ? publicUrl.replace(/\/+$/, '') : '';
   const adminKeys = new Set((admins || []).filter(a => a.admin !== false).map(a => a.name.toLowerCase()));
   if (!adminKeys.size) throw new Error('at least one admin is required');
   const app = express();
@@ -192,7 +194,7 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
     }
     await db.query('DELETE FROM login_failures WHERE ip = $1 OR at < $2', [ip, now - LOGIN_WINDOW_MS]);
     await startSession(req, res, user);
-    res.json({ ok: true, name: user.name, theme: user.theme, isAdmin: adminKeys.has(key) });
+    res.json({ ok: true, name: user.name, theme: user.theme, isAdmin: adminKeys.has(key), publicUrl });
   });
 
   app.post('/api/admin/logout', async (req, res) => {
@@ -204,7 +206,7 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
 
   app.get('/api/admin/me', async (req, res) => {
     const user = await userOf(req);
-    res.set('Cache-Control', 'no-store').json({ admin: !!user, name: user ? user.name : null, theme: user ? user.theme : 'pink', isAdmin: !!user?.admin });
+    res.set('Cache-Control', 'no-store').json({ admin: !!user, name: user ? user.name : null, theme: user ? user.theme : 'pink', isAdmin: !!user?.admin, publicUrl: user ? publicUrl : '' });
   });
 
   /* Everything below is limited to the signed-in user's own lists: every query checks lists.user_id */
