@@ -95,6 +95,15 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .hbig h1{font-size:30px;line-height:1.1;overflow-wrap:anywhere}
 .hbig p{margin:4px 0 0;font-size:14px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
 .hslim{position:absolute;left:0;right:0;bottom:0;height:50px;padding:0 12px 0 56px;display:flex;align-items:center;gap:10px;pointer-events:none;opacity:calc(2.5*var(--p) - 1.2);transform:translateY(calc(10px - 10px*var(--p)))}
+/* "m": the name fits on one line, so it shrinks and slides into the slim position instead of fading.
+   It moves sideways faster than it rises, so it clears the icon before coming level with it. */
+.hbox.m .hbig{opacity:1;transform:none}
+.hbox.m .mark{opacity:calc(1 - 2.5*var(--p));transform:translate(calc(4px*var(--p)),calc(-17px*var(--p)))}
+.hbox.m .hbig h1{width:max-content;white-space:nowrap;transform-origin:0 0;transform:translate(calc(38px*min(1,1.9*var(--p))),calc(-33.25px*var(--p))) scale(calc(1 - .3667*var(--p)))}
+.hbox.m .hbig p{opacity:calc(1 - 2.5*var(--p))}
+/* pinned to the top of the box, where it ends up, so the small label never crosses the sliding name */
+.hbox.m .hslim{top:0;bottom:auto;transform:none}
+.hbox.m .hslim .t b{visibility:hidden}
 .hslim .t{flex:1;min-width:0;display:grid}
 .hslim .t small{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-deep)}
 .hslim .t b{font-family:var(--display);font-size:19px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

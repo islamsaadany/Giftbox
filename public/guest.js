@@ -21,8 +21,20 @@
       <div class="hbig" id="hbig"><div class="mark">Wishbox</div>${big}</div>
       ${slim ? `<div class="hslim" aria-hidden="true">${slim}</div>` : ''}</div>`;
   }
+  /* When the list name fits on one line, the big name itself shrinks and slides into the slim bar (class "m").
+     A name long enough to wrap, or too wide for the slim bar next to the gift count, fades between the two instead. */
+  const SHRINK = 19 / 30; // slim name size over big name size
+  function fitName() {
+    const box = $('hbox'), h1 = box.querySelector('.hbig h1'), pill = box.querySelector('.hslim .n');
+    if (!h1) return box.classList.remove('m');
+    box.classList.add('m');
+    const w = h1.scrollWidth, room = box.clientWidth;
+    const slimRoom = room - 56 - 12 - (pill ? pill.offsetWidth + 10 : 0);
+    if (w > room - 36 || w * SHRINK > slimRoom) box.classList.remove('m');
+  }
   function measure() {
     const big = $('hbig'); if (!big) return;
+    fitName();
     tall = Math.max(big.offsetHeight, SLIM);
     padTop = parseFloat(getComputedStyle(hdr).paddingTop) || 0;
     const space = $('hspace'); if (space) space.style.height = (padTop + tall) + 'px';
