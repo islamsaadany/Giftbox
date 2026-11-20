@@ -113,17 +113,21 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .segsort{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:3px}
 .segsort button{border:0;background:none;border-radius:9px;padding:8px 4px;font-size:12px;font-weight:600;color:var(--muted)}
 .segsort button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
-/* guest cards: softer, with the price as the main line */
+/* cards, on the guest and the admin page: soft, with the price as the main line */
 .guest .grid{margin-top:2px}
-.guest .card{border:0;border-radius:18px;padding:8px;gap:8px;overflow:visible;box-shadow:0 1px 3px rgb(33 31 54 / .08)}
-.guest .pic{border-radius:12px}
-.guest .card-body{padding:0 4px 2px;gap:4px}
-.guest .card h3{font-family:var(--body);font-size:13px;line-height:1.35;font-weight:500;letter-spacing:0;color:var(--muted)}
-.guest .price{font-family:var(--display);font-size:17px;font-weight:700;min-height:0}
-.guest .each{font-family:var(--body)}
-.guest .qty{top:auto;right:auto;left:6px;bottom:6px;background:var(--surface);color:var(--ink);font-family:var(--body);font-size:11px;font-weight:600;padding:5px 8px;box-shadow:none}
-.guest .row{gap:0;padding-top:4px}
-.guest .row .btn.primary{border-radius:999px;font-size:13px;padding:9px 8px}
+.card{border:0;border-radius:18px;padding:8px;gap:8px;overflow:visible;box-shadow:0 1px 3px rgb(33 31 54 / .08)}
+.pic{border-radius:12px}
+.card-body{padding:0 4px 2px;gap:4px}
+.card h3{font-family:var(--body);font-size:13px;line-height:1.35;font-weight:500;letter-spacing:0;color:var(--muted)}
+.card .price{font-family:var(--display);font-size:17px;font-weight:700}
+.each{font-family:var(--body)}
+.qty{top:auto;right:auto;left:6px;bottom:6px;background:var(--surface);color:var(--ink);font-family:var(--body);font-size:11px;font-weight:600;padding:5px 8px;box-shadow:none}
+.row{gap:0;padding-top:4px}
+.row .btn{border-radius:999px;font-size:13px;padding:9px 8px}
+/* the admin's Edit: same round shape as Reserve but quieter, so "Add item" stays the main action */
+.row .btn.soft{background:var(--accent-soft);border-color:transparent;color:var(--accent-deep)}
+.card .meta{margin-bottom:2px}
+.who-list{margin:4px 0 2px}
 .shoplink{display:block;font-size:12px;font-weight:600;text-align:center;padding:9px 0 5px;color:var(--accent-deep);text-decoration:none}
 .shoplink.none{visibility:hidden}
 
