@@ -12,6 +12,7 @@ const MAX_PHOTO_BYTES = 700 * 1024;
 const LOGIN_MAX = 10, LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const NAME_RE = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{1,29}$/u; // 2 to 30 characters
 const PASSWORD_MIN = 8, PASSWORD_MAX = 200;
+const THEMES = ['pink', 'blue', 'teal', 'green', 'purple', 'orange']; // colours live in public/app.css
 
 const scrypt = promisify(crypto.scrypt);
 /* Passwords are stored as "salt:key" (hex), hashed with scrypt */
@@ -48,10 +49,11 @@ function limiter(max, windowMs) {
 }
 
 /* db: from ./db (query/tx/ready). photos: from ./photos (save/remove/url).
-   admins: [{ name, password }] from ADMIN_USERS. They are the only ones who can create users. */
+   admins: [{ name, password, admin }] from ADMIN_USERS (see ./admins). Those with admin !== false are
+   the only ones who can create users. */
 function createApp({ db, photos, admins, trustProxy = 1 }) {
-  if (!admins?.length) throw new Error('at least one admin is required');
-  const adminKeys = new Set(admins.map(a => a.name.toLowerCase()));
+  const adminKeys = new Set((admins || []).filter(a => a.admin !== false).map(a => a.name.toLowerCase()));
+  if (!adminKeys.size) throw new Error('at least one admin is required');
   const app = express();
   app.set('trust proxy', trustProxy);
   app.disable('x-powered-by');
@@ -127,7 +129,8 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
   }
 
   /* Accounts from ADMIN_USERS are created once and never overwritten afterwards. Lists from before
-     lists had owners go to the first of those accounts. */
+     lists had owners go to the first of those accounts that isn't an admin (the person who was making
+     lists), or to the first one when all of them are admins. */
   async function seed() {
     const have = new Set((await rows('SELECT name_key FROM users WHERE name_key = ANY($1)', [admins.map(a => a.name.toLowerCase())])).map(r => r.name_key));
     for (const a of admins) {
@@ -135,7 +138,7 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
       await db.query('INSERT INTO users (name, name_key, password_hash, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (name_key) DO NOTHING',
         [a.name, a.name.toLowerCase(), await hashPassword(a.password), Date.now()]);
     }
-    await db.query('UPDATE lists SET user_id = (SELECT id FROM users WHERE name_key = $1) WHERE user_id IS NULL', [admins[0].name.toLowerCase()]);
+    await db.query('UPDATE lists SET user_id = (SELECT id FROM users WHERE name_key = $1) WHERE user_id IS NULL', [(admins.find(a => a.admin === false) || admins[0]).name.toLowerCase()]);
   }
   let seeded;
   // Make sure the tables and the first accounts exist before any API call
@@ -153,11 +156,11 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
     const m = new RegExp('(?:^|;\\s*)' + COOKIE + '=([a-f0-9]{64})').exec(req.headers.cookie || '');
     return m && m[1];
   };
-  // Returns the signed-in user ({ id, name, admin }), or undefined
+  // Returns the signed-in user ({ id, name, theme, admin }), or undefined
   const userOf = async req => {
     const t = cookieToken(req);
     if (!t) return undefined;
-    const u = await one('SELECT u.id, u.name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > $2', [sha(t).toString('hex'), Date.now()]);
+    const u = await one('SELECT u.id, u.name, u.theme FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > $2', [sha(t).toString('hex'), Date.now()]);
     return u && { ...u, admin: adminKeys.has(u.name.toLowerCase()) };
   };
   const cleanName = v => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '');
@@ -181,7 +184,7 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
     if (f.n >= LOGIN_MAX) throw new HttpError(429, 'too_many_attempts');
     const given = typeof req.body?.password === 'string' ? req.body.password.slice(0, PASSWORD_MAX) : '';
     const key = cleanName(req.body?.name).toLowerCase();
-    const user = await one('SELECT id, name, password_hash FROM users WHERE name_key = $1', [key]);
+    const user = await one('SELECT id, name, theme, password_hash FROM users WHERE name_key = $1', [key]);
     const right = await checkPassword(given, user ? user.password_hash : (dummyHash ||= await hashPassword(crypto.randomBytes(16).toString('hex'))));
     if (!user || !right) {
       await db.query('INSERT INTO login_failures (ip, at) VALUES ($1, $2)', [ip, now]);
@@ -189,7 +192,7 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
     }
     await db.query('DELETE FROM login_failures WHERE ip = $1 OR at < $2', [ip, now - LOGIN_WINDOW_MS]);
     await startSession(req, res, user);
-    res.json({ ok: true, name: user.name, isAdmin: adminKeys.has(key) });
+    res.json({ ok: true, name: user.name, theme: user.theme, isAdmin: adminKeys.has(key) });
   });
 
   app.post('/api/admin/logout', async (req, res) => {
@@ -201,7 +204,7 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
 
   app.get('/api/admin/me', async (req, res) => {
     const user = await userOf(req);
-    res.set('Cache-Control', 'no-store').json({ admin: !!user, name: user ? user.name : null, isAdmin: !!user?.admin });
+    res.set('Cache-Control', 'no-store').json({ admin: !!user, name: user ? user.name : null, theme: user ? user.theme : 'pink', isAdmin: !!user?.admin });
   });
 
   /* Everything below is limited to the signed-in user's own lists: every query checks lists.user_id */
@@ -211,6 +214,13 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
     req.user = await userOf(req);
     if (!req.user) throw new HttpError(401, 'not_signed_in');
     next();
+  });
+
+  // The user's colour theme, also used on their guest pages
+  admin.patch('/me', async (req, res) => {
+    if (!THEMES.includes(req.body?.theme)) throw bad('bad_theme');
+    await db.query('UPDATE users SET theme = $1 WHERE id = $2', [req.body.theme, req.user.id]);
+    res.json({ ok: true });
   });
 
   admin.get('/lists', async (req, res) => {
@@ -358,14 +368,14 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
 
   app.get('/api/l/:slug', async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    const l = slugOk(req.params.slug) && (await one('SELECT id, name, note FROM lists WHERE slug = $1', [req.params.slug]));
+    const l = slugOk(req.params.slug) && (await one('SELECT l.id, l.name, l.note, u.theme FROM lists l LEFT JOIN users u ON u.id = l.user_id WHERE l.slug = $1', [req.params.slug]));
     if (!l) throw new HttpError(404, 'not_found');
     const items = await rows(`
       SELECT i.id, i.name, i.price_egp, i.quantity, i.shop_url, i.photo,
              (i.quantity - COALESCE((SELECT SUM(count) FROM reservations r WHERE r.item_id = i.id), 0))::int AS pieces_left
       FROM items i WHERE i.list_id = $1 ORDER BY i.id DESC`, [l.id]);
     res.json({
-      name: l.name, note: l.note,
+      name: l.name, note: l.note, theme: l.theme || 'pink',
       total: items.length,
       items: items.filter(i => i.pieces_left > 0).map(i => ({
         id: i.id, name: i.name, price: i.price_egp, link: i.shop_url || '', photo: photos.url(i.photo),

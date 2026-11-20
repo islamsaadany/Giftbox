@@ -6,8 +6,8 @@ const { openPhotos } = require('./src/photos');
 const { readAdmins } = require('./src/admins');
 
 const admins = readAdmins(process.env);
-if (!admins.length) {
-  console.error('Set ADMIN_USERS (e.g. "Alaa:password") before starting Wishbox. Those accounts create everyone else.');
+if (!admins.some(a => a.admin)) {
+  console.error('Set ADMIN_USERS (e.g. "Islam:password") before starting Wishbox. Those accounts create everyone else. If ADMINS is set, it must name one of them.');
   process.exit(1);
 }
 

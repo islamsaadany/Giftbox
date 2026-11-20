@@ -3,7 +3,8 @@
 Gift lists you share with a link. An admin gives each person a username and password; each person makes their own lists and adds gifts; guests open a list's link, see only what is still available, and reserve one (or some pieces of one) with their name and mobile number.
 
 - **Users**: `/admin`. Each person signs in with the username and password the admin gave them and sees only their own lists: items, every reservation (name, mobile, how many, date), release per reservation.
-- **Admins**: the accounts named in `ADMIN_USERS`. They get a **Users** page to create users, set a new password for anyone, and delete users. There is no sign-up. Admins can also keep lists of their own.
+- **Colour**: each user picks a colour theme (pink, light blue, teal, green, purple, orange) under **Colour**. Their guests see their lists in it too.
+- **Admins**: the accounts named in `ADMIN_USERS`, or only those listed in `ADMINS` when it is set. They get a **Users** page to create users, set a new password for anyone, and delete users. There is no sign-up. Admins can also keep lists of their own.
 - **Guests**: `/l/<slug>`, a random 8-character link per list. The guest API never returns reservations, names or mobiles.
 
 ## Publish on Vercel
@@ -34,6 +35,7 @@ Then open http://localhost:3000/admin and sign in as the admin. Add everyone els
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `ADMIN_USERS` | The admins as `Name:password,Name:password` (required). Names can't contain `:` or `,`; passwords can't contain `,`. The password is only used to create the account the first time; after that, change it on the Users page. Lists from before accounts existed go to the first admin | none |
+| `ADMINS` | Optional. Names from `ADMIN_USERS` who are admins, e.g. `Islam`. The other `ADMIN_USERS` accounts are then ordinary users who keep their sign-in and lists, and lists from before accounts existed go to the first of them | everyone in `ADMIN_USERS` |
 | `DATABASE_URL` | Postgres connection string (`POSTGRES_URL` also works) | embedded database in `DATA_DIR` |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob token for pictures | pictures saved in `DATA_DIR` |
 | `DATA_DIR` | Folder for local data | `./data` |

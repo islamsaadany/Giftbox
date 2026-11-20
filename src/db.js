@@ -9,6 +9,7 @@ const SCHEMA = `
     password_hash TEXT NOT NULL,
     created_at    BIGINT NOT NULL
   );
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'pink';
   CREATE TABLE IF NOT EXISTS lists (
     id         SERIAL PRIMARY KEY,
     slug       TEXT NOT NULL UNIQUE,

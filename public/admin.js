@@ -1,5 +1,5 @@
 (function () {
-  const { gift, logo, esc, money, $, api, problem, toast, open, close, confirmBox, busy } = WB;
+  const { THEMES, setTheme, gift, logo, esc, money, $, api, problem, toast, open, close, confirmBox, busy } = WB;
   const app = $('app');
   let lists = [], listId = null, filter = 'all';
   try { listId = Number(sessionStorage.getItem('wb.list')) || null; } catch (_) {}
@@ -10,8 +10,8 @@
   const cur = () => lists.find(l => l.id === listId);
   const guestLink = l => location.origin + '/l/' + l.slug;
   const pick = id => { listId = id; try { sessionStorage.setItem('wb.list', id); } catch (_) {} };
-  let me = '', isAdmin = false, view = 'lists', users = [];
-  const top = signedIn => `<header class="top"><div class="brand">${logo}Wishbox</div>${signedIn ? `<div class="share">${isAdmin ? `<button class="link-btn" id="nav">${view === 'users' ? 'My lists' : 'Users'}</button>` : ''}<button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button></div>` : ''}</header>`;
+  let me = '', theme = 'pink', isAdmin = false, view = 'lists', users = [];
+  const top = signedIn => `<header class="top"><div class="brand">${logo}Wishbox</div>${signedIn ? `<div class="share">${isAdmin ? `<button class="link-btn" id="nav">${view === 'users' ? 'My lists' : 'Users'}</button>` : ''}<button class="link-btn" id="theme">Colour</button><button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button></div>` : ''}</header>`;
 
   /* Any admin call can find the session expired: go back to the login screen */
   async function call(method, url, body) {
@@ -23,7 +23,7 @@
     try {
       const r = await api('GET', '/api/admin/me');
       if (!r.admin) return login();
-      me = r.name; isAdmin = r.isAdmin;
+      me = r.name; isAdmin = r.isAdmin; theme = setTheme(r.theme);
       await refresh();
     } catch (e) { app.innerHTML = top(false) + `<div class="empty"><h3>Couldn't load</h3>${esc(problem(e))}</div>`; }
   }
@@ -41,7 +41,7 @@
       busy($('lgo'), async () => {
         try {
           const r = await api('POST', '/api/admin/login', { name: $('un').value, password: $('pw').value });
-          me = r.name; isAdmin = r.isAdmin; filter = 'all';
+          me = r.name; isAdmin = r.isAdmin; theme = setTheme(r.theme); filter = 'all';
           await refresh();
         } catch (x) { const el = $('lge'); if (el) el.textContent = x.code === 'wrong_login' ? 'That username or password isn’t right.' : problem(x); }
       });
@@ -96,6 +96,7 @@
     const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
     const item = id => cur().items.find(i => String(i.id) === id);
     on('logout', async () => { try { await api('POST', '/api/admin/logout', {}); } catch (_) {} login(); });
+    on('theme', themePicker);
     on('nav', () => { view = view === 'users' ? 'lists' : 'users'; refresh().catch(e => toast(problem(e))); });
     on('new-list', () => listForm());
     on('edit-list', () => listForm(cur()));
@@ -113,6 +114,25 @@
         it.qty > 1 ? (r.count + ' ' + (r.count > 1 ? 'pieces go' : 'piece goes') + ' back on the guest list. Other reservations stay as they are.') : 'The gift goes back on the guest list.',
         'Release', () => act(() => call('DELETE', '/api/admin/reservations/' + r.id), 'Released'));
     }));
+  }
+
+  /* Tapping a colour shows it straight away and saves it for this user and their guest pages */
+  function themePicker() {
+    open(`<h2>Colour</h2><p>Your pages and the lists your guests open use this colour.</p>
+      <div class="swatches">${THEMES.map(([k, label]) => `<button type="button" class="swatch" data-theme="${k}" aria-pressed="${k === theme}"><i></i>${label}</button>`).join('')}</div>
+      <div class="actions"><button class="btn primary" data-close>Done</button></div>`, sh => {
+      sh.querySelectorAll('.swatch').forEach(b => (b.onclick = async () => {
+        const before = theme;
+        theme = setTheme(b.dataset.theme);
+        sh.querySelectorAll('.swatch').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+        try { await call('PATCH', '/api/admin/me', { theme }); }
+        catch (e) {
+          theme = setTheme(before);
+          sh.querySelectorAll('.swatch').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.theme === theme)));
+          if (e.status !== 401) toast(problem(e));
+        }
+      }));
+    });
   }
 
   /* ---------- users (admins only) ---------- */
