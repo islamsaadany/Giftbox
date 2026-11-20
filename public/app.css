@@ -6,11 +6,28 @@
   --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
   --body:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   --r:14px; --accent-deep:#8E2545;
+  --danger:#C93A64; --logo:#C93A64; --logo-hi:#F06A92; --logo-lo:#A82C52;
 }
 @media (prefers-color-scheme:dark){:root{
   --bg:#15141F; --surface:#1F1D2C; --ink:#EEEDF5; --muted:#A3A0B8; --line:#33304A;
   --accent:#F06A92; --accent-ink:#1A0D13; --accent-soft:#3A1E2A;
-  --ok:#6CCB97; --ok-soft:#1C3328; --taken:#E7B661; --taken-soft:#3A2E17; --accent-deep:#F7A8BF; color-scheme:dark}}
+  --ok:#6CCB97; --ok-soft:#1C3328; --taken:#E7B661; --taken-soft:#3A2E17; --accent-deep:#F7A8BF; --danger:#F06A92; color-scheme:dark}}
+/* Colour themes: each user picks one, and their guests see it too. Pink is the default above.
+   Set on <html>, and on each swatch in the picker so it shows its own colour. */
+[data-theme="pink"]{--accent:#C93A64;--accent-soft:#FBE7EE;--accent-deep:#8E2545}
+[data-theme="blue"]{--accent:#1A76B8;--accent-soft:#E1F0FB;--accent-deep:#12517F;--logo:#1A76B8;--logo-hi:#6BB8F0;--logo-lo:#12517F}
+[data-theme="teal"]{--accent:#0F7F85;--accent-soft:#DDF3F3;--accent-deep:#0A5A5E;--logo:#0F7F85;--logo-hi:#5CC9CE;--logo-lo:#0A5A5E}
+[data-theme="green"]{--accent:#287A4F;--accent-soft:#E2F3E9;--accent-deep:#1B5537;--logo:#287A4F;--logo-hi:#6CCB97;--logo-lo:#1B5537}
+[data-theme="purple"]{--accent:#7A4CC2;--accent-soft:#EFE8FA;--accent-deep:#54318C;--logo:#7A4CC2;--logo-hi:#B394F0;--logo-lo:#54318C}
+[data-theme="orange"]{--accent:#B8500A;--accent-soft:#FCEBDD;--accent-deep:#853A07;--logo:#B8500A;--logo-hi:#F29A55;--logo-lo:#853A07}
+@media (prefers-color-scheme:dark){
+  [data-theme="pink"]{--accent:#F06A92;--accent-ink:#1A0D13;--accent-soft:#3A1E2A;--accent-deep:#F7A8BF}
+  [data-theme="blue"]{--accent:#6BB8F0;--accent-ink:#08182A;--accent-soft:#17304A;--accent-deep:#A9D6F7}
+  [data-theme="teal"]{--accent:#5CC9CE;--accent-ink:#06201F;--accent-soft:#16373A;--accent-deep:#A2E2E5}
+  [data-theme="green"]{--accent:#6CCB97;--accent-ink:#0B1F14;--accent-soft:#1C3328;--accent-deep:#A8E2C2}
+  [data-theme="purple"]{--accent:#B394F0;--accent-ink:#160D2A;--accent-soft:#2E2348;--accent-deep:#D3C2F7}
+  [data-theme="orange"]{--accent:#F29A55;--accent-ink:#2A1405;--accent-soft:#3D2716;--accent-deep:#F7C39B}
+}
 *{box-sizing:border-box}
 html,body{overflow-x:hidden;max-width:100%}
 /* clip (not hidden) on body: hidden would turn body into a scroll box and stop the pinned sort bar from sticking */
@@ -34,7 +51,7 @@ button{cursor:pointer}
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 14px;font-weight:600;font-size:14px}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.ghost{background:none}
-.btn.danger{color:var(--accent);border-color:var(--accent)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
 .btn:disabled{opacity:.5;cursor:default}
 a.btn{color:inherit;display:inline-block;text-decoration:none}
 
@@ -81,6 +98,17 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .who span{color:var(--muted)}
 .who .num{font-variant-numeric:tabular-nums;user-select:all}
 .who .rel{border:0;background:none;color:var(--accent);font-size:11px;font-weight:600;padding:4px 0 0;justify-self:start}
+.swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.swatch{display:grid;justify-items:center;gap:6px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface);padding:12px 6px;font-size:13px;font-weight:600;color:var(--ink)}
+.swatch i{width:36px;height:36px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 5px var(--accent-soft)}
+.swatch[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-deep)}
+.swatch[aria-pressed="true"] i{box-shadow:0 0 0 5px var(--surface)}
+.user-list{display:grid;gap:8px}
+.user{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.user div{display:grid;gap:2px;min-width:0;overflow-wrap:anywhere}
+.user div span:last-child{color:var(--muted);font-size:13px}
+.user .pill{justify-self:start}
+.top .share{gap:16px}
 .empty{text-align:center;padding:36px 16px;color:var(--muted);border:1.5px dashed var(--line);border-radius:var(--r);margin-top:16px}
 .empty h3{color:var(--ink);font-size:18px;margin-bottom:4px}
 
@@ -156,7 +184,7 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .field input{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px;width:100%;min-width:0;max-width:100%;font-size:16px}
 .field input[type=file]{font-size:13px;border:0;background:none;padding:0}
 .field .hint{font-size:12px;color:var(--muted)}
-.err{font-size:13px;color:var(--accent);min-height:0}
+.err{font-size:13px;color:var(--danger);min-height:0}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .two>*{min-width:0}
 .photo-pick{display:flex;gap:12px;align-items:center}

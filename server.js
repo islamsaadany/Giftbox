@@ -6,8 +6,8 @@ const { openPhotos } = require('./src/photos');
 const { readAdmins } = require('./src/admins');
 
 const admins = readAdmins(process.env);
-if (!admins.length) {
-  console.error('Set ADMIN_USERS (e.g. "Alaa:password,Islam:password") before starting Wishbox.');
+if (!admins.some(a => a.admin)) {
+  console.error('Set ADMIN_USERS (e.g. "Islam:password") before starting Wishbox. Those accounts create everyone else. If ADMINS is set, it must name one of them.');
   process.exit(1);
 }
 
@@ -18,5 +18,5 @@ const photos = openPhotos({ blobToken: process.env.BLOB_READ_WRITE_TOKEN, dir: p
 const port = Number(process.env.PORT) || 3000;
 
 const server = createApp({ db, photos, admins }).listen(port, () =>
-  console.log(`Wishbox on http://localhost:${port}  (admin: /admin, database: ${url ? 'Postgres' : 'local, in ' + dataDir})`));
+  console.log(`Wishbox on http://localhost:${port}  (sign in: /admin, database: ${url ? 'Postgres' : 'local, in ' + dataDir})`));
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => server.close(async () => { await db.close().catch(() => {}); process.exit(0); }));

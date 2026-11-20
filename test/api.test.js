@@ -110,6 +110,104 @@ test('deleting a list removes its link; logout ends the session', async () => {
   assert.equal((await call('GET', '/api/admin/lists')).status, 401);
 });
 
+test('admins create the users, and each user sees only their own lists', async () => {
+  await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' });
+  const alaaCookie = cookie;
+  const theirs = (await call('POST', '/api/admin/lists', { name: 'Alaa only' })).body.id;
+  const item = (await call('POST', `/api/admin/lists/${theirs}/items`, { name: 'Stroller', photo: JPEG })).body.id;
+  const theirSlug = (await call('GET', '/api/admin/lists')).body.lists.find(l => l.id === theirs).slug;
+  await call('POST', `/api/l/${theirSlug}/items/${item}/reserve`, { name: 'Nour', mobile: '01011112222' }, { auth: false });
+  const resv = (await call('GET', '/api/admin/lists')).body.lists.find(l => l.id === theirs).items[0].reservations[0].id;
+
+  // there is no sign-up: only an admin can create a user
+  assert.equal((await call('POST', '/api/admin/signup', { name: 'Mona', password: 'long enough' }, { auth: false })).status, 401);
+  assert.equal((await call('POST', '/api/admin/signup', { name: 'Mona', password: 'long enough' })).status, 404);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'Mona', password: 'long enough' }, { auth: false })).status, 401);
+  assert.equal((await call('GET', '/api/admin/me')).body.isAdmin, true);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'x', password: 'long enough' })).status, 400);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'Mona', password: 'short' })).status, 400);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'ALAA', password: 'long enough' })).status, 409);
+  const mona = await call('POST', '/api/admin/users', { name: 'Mona', password: 'first pass' });
+  assert.equal(mona.status, 201);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'Temp', password: 'long enough' })).status, 201);
+  const all = (await call('GET', '/api/admin/users')).body.users;
+  assert.deepEqual(all.map(u => [u.name, u.admin]), [['Alaa', true], ['Islam', true], ['Mona', false], ['Temp', false]]);
+  const temp = all.find(u => u.name === 'Temp').id;
+  assert.equal((await call('DELETE', '/api/admin/users/' + all[1].id)).status, 409); // admins stay
+  assert.equal((await call('DELETE', '/api/admin/users/' + temp)).status, 200);
+  assert.equal((await call('PATCH', '/api/admin/users/' + mona.body.id, { password: 'long enough' })).status, 200);
+
+  cookie = '';
+  assert.equal((await call('POST', '/api/admin/login', { name: 'Temp', password: 'long enough' })).status, 401);
+  assert.equal((await call('POST', '/api/admin/login', { name: 'Mona', password: 'first pass' })).status, 401);
+  assert.equal((await call('POST', '/api/admin/login', { name: 'Mona', password: 'long enough' })).status, 200);
+  assert.deepEqual((await call('GET', '/api/admin/me')).body, { admin: true, name: 'Mona', theme: 'pink', isAdmin: false });
+  // each user picks their own colour, and their guests see it
+  assert.equal((await call('PATCH', '/api/admin/me', { theme: 'red; }' })).status, 400);
+  assert.equal((await call('PATCH', '/api/admin/me', { theme: 'blue' })).status, 200);
+  assert.equal((await call('GET', '/api/admin/me')).body.theme, 'blue');
+  const blueList = (await call('POST', '/api/admin/lists', { name: 'Blue list' })).body.id;
+  const blueSlug = (await call('GET', '/api/admin/lists')).body.lists.find(l => l.id === blueList).slug;
+  assert.equal((await call('GET', '/api/l/' + blueSlug, null, { auth: false })).body.theme, 'blue');
+  assert.equal((await call('GET', '/api/l/' + theirSlug, null, { auth: false })).body.theme, 'pink');
+  await call('DELETE', '/api/admin/lists/' + blueList);
+  // a user can't manage users
+  assert.equal((await call('GET', '/api/admin/users')).status, 403);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'Friend', password: 'long enough' })).status, 403);
+  assert.equal((await call('PATCH', '/api/admin/users/' + all[0].id, { password: 'taken over' })).status, 403);
+  assert.deepEqual((await call('GET', '/api/admin/lists')).body.lists, []);
+
+  // Mona can't read or change anything of Alaa's
+  assert.equal((await call('PATCH', '/api/admin/lists/' + theirs, { name: 'Mine now' })).status, 404);
+  assert.equal((await call('POST', `/api/admin/lists/${theirs}/items`, { name: 'Sneaky' })).status, 404);
+  assert.equal((await call('PATCH', '/api/admin/items/' + item, { name: 'Sneaky' })).status, 404);
+  assert.equal((await call('DELETE', '/api/admin/items/' + item)).status, 404);
+  assert.equal((await call('DELETE', '/api/admin/reservations/' + resv)).status, 404);
+  assert.equal((await call('DELETE', '/api/admin/lists/' + theirs)).status, 404);
+
+  const mine = (await call('POST', '/api/admin/lists', { name: 'Mona list' })).body.id;
+  assert.deepEqual((await call('GET', '/api/admin/lists')).body.lists.map(l => l.id), [mine]);
+  await call('POST', '/api/admin/logout', {});
+  assert.equal((await call('POST', '/api/admin/login', { name: 'mona', password: 'long enough' })).status, 200);
+  assert.deepEqual((await call('GET', '/api/admin/lists')).body.lists.map(l => l.name), ['Mona list']);
+
+  cookie = alaaCookie;
+  const l = (await call('GET', '/api/admin/lists')).body.lists.find(x => x.id === theirs);
+  assert.deepEqual([l.name, l.items[0].name, l.items[0].reservations.length], ['Alaa only', 'Stroller', 1]);
+  assert.ok(!(await call('GET', '/api/admin/lists')).body.lists.some(x => x.id === mine));
+});
+
+test('lists from before accounts go to the first ADMIN_USERS account; ADMINS picks who is admin', async () => {
+  await db.query("INSERT INTO lists (slug, name, created_at) VALUES ('oldlist22', 'Old list', 1)");
+  const app2 = createApp({ db, photos: openPhotos({ dir: path.join(dataDir, 'photos') }), admins: [{ name: 'Alaa', password: 'changed in env' }, { name: 'Islam', password: 'second pass' }] });
+  const s2 = await new Promise(r => { const s = app2.listen(0, () => r(s)); });
+  const old = base; base = 'http://127.0.0.1:' + s2.address().port;
+  try {
+    // the stored password wins over a later change in ADMIN_USERS
+    assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' })).status, 200);
+    assert.ok((await call('GET', '/api/admin/lists')).body.lists.some(l => l.name === 'Old list'));
+    await call('POST', '/api/admin/login', { name: 'Islam', password: 'second pass' });
+    assert.ok(!(await call('GET', '/api/admin/lists')).body.lists.some(l => l.name === 'Old list'));
+  } finally { base = old; s2.close(); }
+
+  // ADMIN_USERS="Islam:..,Alaa:.." with ADMINS="Islam": Alaa becomes a user and keeps her sign-in and lists
+  const { readAdmins } = require('../src/admins');
+  const accounts = readAdmins({ ADMIN_USERS: 'Islam:second pass,Alaa:correct horse', ADMINS: ' islam ' });
+  assert.deepEqual(accounts.map(a => [a.name, a.admin]), [['Islam', true], ['Alaa', false]]);
+  assert.ok(readAdmins({ ADMIN_USERS: 'Islam:second pass,Alaa:correct horse' }).every(a => a.admin));
+  await db.query("INSERT INTO lists (slug, name, created_at) VALUES ('oldlist33', 'Older list', 1)");
+  const s3 = await new Promise(r => { const s = createApp({ db, photos: openPhotos({ dir: path.join(dataDir, 'photos') }), admins: accounts }).listen(0, () => r(s)); });
+  base = 'http://127.0.0.1:' + s3.address().port;
+  try {
+    assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' })).body.isAdmin, false);
+    const names = (await call('GET', '/api/admin/lists')).body.lists.map(l => l.name);
+    assert.ok(names.includes('Old list') && names.includes('Older list') && names.includes('Alaa only'), names.join());
+    assert.equal((await call('GET', '/api/admin/users')).status, 403);
+    assert.equal((await call('POST', '/api/admin/login', { name: 'Islam', password: 'second pass' })).body.isAdmin, true);
+    assert.deepEqual((await call('GET', '/api/admin/users')).body.users.filter(u => u.admin).map(u => u.name), ['Islam']);
+  } finally { base = old; s3.close(); }
+});
+
 test('two guests racing for the last piece: only one wins', async () => {
   await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' });
   const l = (await call('POST', '/api/admin/lists', { name: 'Race' })).body.id;
