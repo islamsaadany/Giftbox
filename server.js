@@ -6,6 +6,10 @@ const { openPhotos } = require('./src/photos');
 const { readAdmins } = require('./src/admins');
 
 const admins = readAdmins(process.env);
+if (!admins.length) {
+  console.error('Set ADMIN_USERS (e.g. "Alaa:password") before starting Wishbox. Those accounts create everyone else.');
+  process.exit(1);
+}
 
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;

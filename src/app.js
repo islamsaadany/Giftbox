@@ -48,8 +48,10 @@ function limiter(max, windowMs) {
 }
 
 /* db: from ./db (query/tx/ready). photos: from ./photos (save/remove/url).
-   admins: optional [{ name, password }] accounts to create on first start (from ADMIN_USERS). */
-function createApp({ db, photos, admins = [], trustProxy = 1 }) {
+   admins: [{ name, password }] from ADMIN_USERS. They are the only ones who can create users. */
+function createApp({ db, photos, admins, trustProxy = 1 }) {
+  if (!admins?.length) throw new Error('at least one admin is required');
+  const adminKeys = new Set(admins.map(a => a.name.toLowerCase()));
   const app = express();
   app.set('trust proxy', trustProxy);
   app.disable('x-powered-by');
@@ -127,7 +129,6 @@ function createApp({ db, photos, admins = [], trustProxy = 1 }) {
   /* Accounts from ADMIN_USERS are created once and never overwritten afterwards. Lists from before
      lists had owners go to the first of those accounts. */
   async function seed() {
-    if (!admins.length) return;
     const have = new Set((await rows('SELECT name_key FROM users WHERE name_key = ANY($1)', [admins.map(a => a.name.toLowerCase())])).map(r => r.name_key));
     for (const a of admins) {
       if (have.has(a.name.toLowerCase())) continue;
@@ -146,18 +147,23 @@ function createApp({ db, photos, admins = [], trustProxy = 1 }) {
 
   /* ---------- accounts and sessions ---------- */
   const reserveLimit = limiter(40, 60 * 60 * 1000);
-  const signupLimit = limiter(10, 60 * 60 * 1000);
   let dummyHash; // checked when the name is unknown, so both cases take the same time
 
   const cookieToken = req => {
     const m = new RegExp('(?:^|;\\s*)' + COOKIE + '=([a-f0-9]{64})').exec(req.headers.cookie || '');
     return m && m[1];
   };
-  // Returns the signed-in user ({ id, name }), or undefined
+  // Returns the signed-in user ({ id, name, admin }), or undefined
   const userOf = async req => {
     const t = cookieToken(req);
     if (!t) return undefined;
-    return one('SELECT u.id, u.name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > $2', [sha(t).toString('hex'), Date.now()]);
+    const u = await one('SELECT u.id, u.name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > $2', [sha(t).toString('hex'), Date.now()]);
+    return u && { ...u, admin: adminKeys.has(u.name.toLowerCase()) };
+  };
+  const cleanName = v => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '');
+  const newPassword = v => {
+    if (typeof v !== 'string' || v.length < PASSWORD_MIN || v.length > PASSWORD_MAX) throw bad('bad_password');
+    return v;
   };
   const setCookie = (req, res, value, maxAgeS) =>
     res.append('Set-Cookie', `${COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeS}${req.secure ? '; Secure' : ''}`);
@@ -168,28 +174,13 @@ function createApp({ db, photos, admins = [], trustProxy = 1 }) {
     setCookie(req, res, token, SESSION_MS / 1000);
   }
 
-  app.post('/api/admin/signup', async (req, res) => {
-    const ip = String(req.ip || 'unknown');
-    if (signupLimit.over(ip)) throw new HttpError(429, 'too_many_attempts');
-    const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
-    if (!NAME_RE.test(name)) throw bad('bad_name');
-    const password = typeof req.body?.password === 'string' ? req.body.password : '';
-    if (password.length < PASSWORD_MIN || password.length > PASSWORD_MAX) throw bad('bad_password');
-    const user = await one('INSERT INTO users (name, name_key, password_hash, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (name_key) DO NOTHING RETURNING id, name',
-      [name, name.toLowerCase(), await hashPassword(password), Date.now()]);
-    if (!user) throw new HttpError(409, 'name_taken');
-    signupLimit.hit(ip);
-    await startSession(req, res, user);
-    res.status(201).json({ ok: true, name: user.name });
-  });
-
   app.post('/api/admin/login', async (req, res) => {
     const ip = String(req.ip || 'unknown'), now = Date.now();
     // Failed tries are counted in the database so the limit holds across server instances
     const f = await one('SELECT COUNT(*)::int AS n FROM login_failures WHERE ip = $1 AND at > $2', [ip, now - LOGIN_WINDOW_MS]);
     if (f.n >= LOGIN_MAX) throw new HttpError(429, 'too_many_attempts');
     const given = typeof req.body?.password === 'string' ? req.body.password.slice(0, PASSWORD_MAX) : '';
-    const key = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ').toLowerCase() : '';
+    const key = cleanName(req.body?.name).toLowerCase();
     const user = await one('SELECT id, name, password_hash FROM users WHERE name_key = $1', [key]);
     const right = await checkPassword(given, user ? user.password_hash : (dummyHash ||= await hashPassword(crypto.randomBytes(16).toString('hex'))));
     if (!user || !right) {
@@ -198,7 +189,7 @@ function createApp({ db, photos, admins = [], trustProxy = 1 }) {
     }
     await db.query('DELETE FROM login_failures WHERE ip = $1 OR at < $2', [ip, now - LOGIN_WINDOW_MS]);
     await startSession(req, res, user);
-    res.json({ ok: true, name: user.name });
+    res.json({ ok: true, name: user.name, isAdmin: adminKeys.has(key) });
   });
 
   app.post('/api/admin/logout', async (req, res) => {
@@ -210,7 +201,7 @@ function createApp({ db, photos, admins = [], trustProxy = 1 }) {
 
   app.get('/api/admin/me', async (req, res) => {
     const user = await userOf(req);
-    res.set('Cache-Control', 'no-store').json({ admin: !!user, name: user ? user.name : null });
+    res.set('Cache-Control', 'no-store').json({ admin: !!user, name: user ? user.name : null, isAdmin: !!user?.admin });
   });
 
   /* Everything below is limited to the signed-in user's own lists: every query checks lists.user_id */
@@ -318,6 +309,48 @@ function createApp({ db, photos, admins = [], trustProxy = 1 }) {
     res.json({ ok: true });
   });
 
+  /* ---------- users: only the admins (ADMIN_USERS) create accounts; there is no sign-up ---------- */
+  const users = express.Router();
+  users.use((req, res, next) => { if (!req.user.admin) throw new HttpError(403, 'not_allowed'); next(); });
+
+  users.get('/', async (req, res) => {
+    const list = await rows(`SELECT u.id, u.name, (SELECT COUNT(*)::int FROM lists l WHERE l.user_id = u.id) AS lists
+                             FROM users u ORDER BY u.created_at, u.id`);
+    res.json({ users: list.map(u => ({ ...u, admin: adminKeys.has(u.name.toLowerCase()) })) });
+  });
+
+  users.post('/', async (req, res) => {
+    const name = cleanName(req.body?.name);
+    if (!NAME_RE.test(name)) throw bad('bad_name');
+    const password = newPassword(req.body?.password);
+    const u = await one('INSERT INTO users (name, name_key, password_hash, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (name_key) DO NOTHING RETURNING id',
+      [name, name.toLowerCase(), await hashPassword(password), Date.now()]);
+    if (!u) throw new HttpError(409, 'name_taken');
+    res.status(201).json({ id: u.id });
+  });
+
+  // A new password signs the user out everywhere (except the admin changing their own)
+  users.patch('/:id', async (req, res) => {
+    const id = idParam(req.params.id), password = newPassword(req.body?.password);
+    const r = await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [await hashPassword(password), id]);
+    if (!r.count) throw new HttpError(404, 'not_found');
+    if (id !== req.user.id) await db.query('DELETE FROM sessions WHERE user_id = $1', [id]);
+    res.json({ ok: true });
+  });
+
+  // Removes the user with their lists, items and reservations. Admins are removed from ADMIN_USERS first.
+  users.delete('/:id', async (req, res) => {
+    const id = idParam(req.params.id);
+    const u = await one('SELECT name FROM users WHERE id = $1', [id]);
+    if (!u) throw new HttpError(404, 'not_found');
+    if (adminKeys.has(u.name.toLowerCase())) throw new HttpError(409, 'is_admin');
+    const pics = await rows('SELECT i.photo FROM items i JOIN lists l ON l.id = i.list_id WHERE l.user_id = $1 AND i.photo IS NOT NULL', [id]);
+    await db.query('DELETE FROM users WHERE id = $1', [id]);
+    await Promise.all(pics.map(p => dropPhoto(p.photo)));
+    res.json({ ok: true });
+  });
+
+  admin.use('/users', users);
   app.use('/api/admin', admin);
 
   /* ---------- guest API: never returns reservations, names or mobiles ---------- */

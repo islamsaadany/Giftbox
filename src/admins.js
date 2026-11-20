@@ -1,6 +1,6 @@
-/* Optional first accounts from the environment:
+/* The admins come from the environment, never from the code:
      ADMIN_USERS="Alaa:password,Islam:password"
-   They are created in the database on first start; everyone else signs up in the app.
+   Their accounts are created in the database on first start, and only they can create the other users.
    The older single ADMIN_PASSWORD still works and creates "Admin". */
 function readAdmins(env) {
   const admins = [];

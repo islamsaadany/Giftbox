@@ -10,8 +10,8 @@
   const cur = () => lists.find(l => l.id === listId);
   const guestLink = l => location.origin + '/l/' + l.slug;
   const pick = id => { listId = id; try { sessionStorage.setItem('wb.list', id); } catch (_) {} };
-  let me = '';
-  const top = signedIn => `<header class="top"><div class="brand">${logo}Wishbox</div>${signedIn ? `<button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button>` : ''}</header>`;
+  let me = '', isAdmin = false, view = 'lists', users = [];
+  const top = signedIn => `<header class="top"><div class="brand">${logo}Wishbox</div>${signedIn ? `<div class="share">${isAdmin ? `<button class="link-btn" id="nav">${view === 'users' ? 'My lists' : 'Users'}</button>` : ''}<button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button></div>` : ''}</header>`;
 
   /* Any admin call can find the session expired: go back to the login screen */
   async function call(method, url, body) {
@@ -23,44 +23,34 @@
     try {
       const r = await api('GET', '/api/admin/me');
       if (!r.admin) return login();
-      me = r.name;
+      me = r.name; isAdmin = r.isAdmin;
       await refresh();
     } catch (e) { app.innerHTML = top(false) + `<div class="empty"><h3>Couldn't load</h3>${esc(problem(e))}</div>`; }
   }
 
-  function login(signup) {
+  function login() {
+    lists = []; users = []; view = 'lists'; isAdmin = false; pick(null);
     app.innerHTML = top(false) + `<div class="center"><form class="panel" id="lg" novalidate>
-      <div><div class="eyebrow">Your gift lists</div><h1>${signup ? 'Create account' : 'Sign in'}</h1></div>
+      <div><div class="eyebrow">Your gift lists</div><h1>Sign in</h1></div>
       <div class="field"><label for="un">Username</label><input id="un" autocomplete="username" autocapitalize="words" maxlength="30"></div>
-      <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" maxlength="200">${signup ? '<span class="hint">At least 8 characters. Keep it safe: it can’t be recovered.</span>' : ''}</div>
+      <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" maxlength="200"></div>
       <div class="err" id="lge" role="alert"></div>
-      <button class="btn primary" id="lgo">${signup ? 'Create account' : 'Sign in'}</button>
-      <button type="button" class="link-btn" id="lgs">${signup ? 'I already have an account' : 'New here? Create an account'}</button></form></div>`;
-    $('lgs').onclick = () => login(!signup);
+      <button class="btn primary" id="lgo">Sign in</button></form></div>`;
     $('lg').onsubmit = e => {
       e.preventDefault();
-      const name = $('un').value.trim(), password = $('pw').value, err = $('lge');
-      if (signup && name.length < 2) { err.textContent = 'Choose a username of at least 2 characters.'; return; }
-      if (signup && password.length < 8) { err.textContent = 'The password needs at least 8 characters.'; return; }
       busy($('lgo'), async () => {
         try {
-          me = (await api('POST', signup ? '/api/admin/signup' : '/api/admin/login', { name, password })).name;
-          lists = []; pick(null); filter = 'all';
+          const r = await api('POST', '/api/admin/login', { name: $('un').value, password: $('pw').value });
+          me = r.name; isAdmin = r.isAdmin; filter = 'all';
           await refresh();
-        } catch (x) {
-          const el = $('lge'); if (!el) return;
-          el.textContent = x.code === 'wrong_login' ? 'That username or password isn’t right.'
-            : x.code === 'name_taken' ? 'That username is taken. Try another one.'
-            : x.code === 'bad_name' ? 'Usernames are 2 to 30 letters or numbers (spaces, dots and dashes are fine).'
-            : x.code === 'bad_password' ? 'The password needs at least 8 characters.'
-            : problem(x);
-        }
+        } catch (x) { const el = $('lge'); if (el) el.textContent = x.code === 'wrong_login' ? 'That username or password isn’t right.' : problem(x); }
       });
     };
     $('un').focus();
   }
 
   async function refresh() {
+    if (view === 'users') { users = (await call('GET', '/api/admin/users')).users; return renderUsers(); }
     lists = (await call('GET', '/api/admin/lists')).lists;
     if (!cur()) pick(lists[0]?.id || null);
     render();
@@ -105,7 +95,8 @@
   function bind() {
     const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
     const item = id => cur().items.find(i => String(i.id) === id);
-    on('logout', async () => { try { await api('POST', '/api/admin/logout', {}); } catch (_) {} lists = []; pick(null); login(); });
+    on('logout', async () => { try { await api('POST', '/api/admin/logout', {}); } catch (_) {} login(); });
+    on('nav', () => { view = view === 'users' ? 'lists' : 'users'; refresh().catch(e => toast(problem(e))); });
     on('new-list', () => listForm());
     on('edit-list', () => listForm(cur()));
     on('add-item', () => itemForm());
@@ -124,10 +115,57 @@
     }));
   }
 
+  /* ---------- users (admins only) ---------- */
+  function renderUsers() {
+    app.innerHTML = top(true) + `<section class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Admin</div><h2>Users</h2></div><button class="btn primary" id="add-user">+ Add user</button></div>
+      <p class="hint">Create a username and password for each person, then send them both. Each person sees only their own lists.</p>
+      <div class="user-list">${users.map(u => `<div class="user"><div><strong>${esc(u.name)}</strong>${u.admin ? ' <span class="pill ok">Admin</span>' : ''}<span>${u.lists} ${u.lists === 1 ? 'list' : 'lists'}</span></div><button class="btn" data-user="${u.id}">Manage</button></div>`).join('')}</div>
+    </section>`;
+    bind();
+    $('add-user').onclick = () => userForm();
+    app.querySelectorAll('[data-user]').forEach(b => (b.onclick = () => userForm(users.find(u => String(u.id) === b.dataset.user))));
+  }
+
+  const userProblem = x => x.code === 'name_taken' ? 'That username is taken. Try another one.'
+    : x.code === 'bad_name' ? 'Usernames are 2 to 30 letters or numbers (spaces, dots and dashes are fine).'
+    : x.code === 'bad_password' ? 'The password needs at least 8 characters.'
+    : x.code === 'is_admin' ? 'Admins can’t be deleted here.'
+    : problem(x);
+
+  /* u given: set a new password or delete. Otherwise: create a user. The password is shown so it can be passed on. */
+  function userForm(u) {
+    open(`<h2>${u ? esc(u.name) : 'Add user'}</h2>
+    <form id="uf" novalidate>
+      ${u ? '' : '<div class="field"><label for="uname">Username</label><input id="uname" maxlength="30" autocomplete="off" autocapitalize="words"></div>'}
+      <div class="field"><label for="upw">${u ? 'New password' : 'Password'}</label><input id="upw" maxlength="200" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <span class="hint">At least 8 characters. ${u ? 'They’ll be signed out and need the new one.' : 'Note it down: it isn’t shown again.'}</span></div>
+      <div class="err" id="ue" role="alert"></div>
+      <div class="actions">${u && !u.admin ? '<button type="button" class="btn danger left" id="udel">Delete user</button>' : ''}<button type="button" class="btn ghost" data-close>Cancel</button><button class="btn primary" id="ugo">${u ? 'Set password' : 'Create user'}</button></div>
+    </form>`, () => {
+      $('uf').onsubmit = e => {
+        e.preventDefault();
+        const name = u ? '' : $('uname').value.trim(), password = $('upw').value, err = $('ue');
+        if (!u && name.length < 2) { err.textContent = 'Give the user a username of at least 2 characters.'; return; }
+        if (password.length < 8) { err.textContent = 'The password needs at least 8 characters.'; return; }
+        busy($('ugo'), async () => {
+          try {
+            if (u) await call('PATCH', '/api/admin/users/' + u.id, { password });
+            else await call('POST', '/api/admin/users', { name, password });
+            close(); await refresh(); toast(u ? 'Password changed' : 'User created');
+          } catch (x) { if ($('ue')) $('ue').textContent = userProblem(x); }
+        });
+      };
+      const d = $('udel');
+      if (d) d.onclick = () => confirmBox('Delete ' + u.name + '?', u.lists ? 'Their ' + (u.lists === 1 ? 'list' : u.lists + ' lists') + ', items and all reservations will be removed. Guests with the links will no longer see them.' : 'They will no longer be able to sign in.',
+        'Delete user', () => act(() => call('DELETE', '/api/admin/users/' + u.id), 'User deleted'));
+    });
+  }
+
   /* Run a change, then reload the lists and say what happened */
   async function act(fn, msg) {
     try { await fn(); await refresh(); toast(msg); }
-    catch (e) { if (e.status !== 401) { toast(problem(e)); refresh().catch(() => {}); } }
+    catch (e) { if (e.status !== 401) { toast(e.code === 'is_admin' ? userProblem(e) : problem(e)); refresh().catch(() => {}); } }
   }
 
   function showLink(t) {

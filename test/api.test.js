@@ -110,7 +110,7 @@ test('deleting a list removes its link; logout ends the session', async () => {
   assert.equal((await call('GET', '/api/admin/lists')).status, 401);
 });
 
-test('anyone can create an account, and sees only their own lists', async () => {
+test('admins create the users, and each user sees only their own lists', async () => {
   await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' });
   const alaaCookie = cookie;
   const theirs = (await call('POST', '/api/admin/lists', { name: 'Alaa only' })).body.id;
@@ -119,13 +119,33 @@ test('anyone can create an account, and sees only their own lists', async () => 
   await call('POST', `/api/l/${theirSlug}/items/${item}/reserve`, { name: 'Nour', mobile: '01011112222' }, { auth: false });
   const resv = (await call('GET', '/api/admin/lists')).body.lists.find(l => l.id === theirs).items[0].reservations[0].id;
 
+  // there is no sign-up: only an admin can create a user
+  assert.equal((await call('POST', '/api/admin/signup', { name: 'Mona', password: 'long enough' }, { auth: false })).status, 401);
+  assert.equal((await call('POST', '/api/admin/signup', { name: 'Mona', password: 'long enough' })).status, 404);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'Mona', password: 'long enough' }, { auth: false })).status, 401);
+  assert.equal((await call('GET', '/api/admin/me')).body.isAdmin, true);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'x', password: 'long enough' })).status, 400);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'Mona', password: 'short' })).status, 400);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'ALAA', password: 'long enough' })).status, 409);
+  const mona = await call('POST', '/api/admin/users', { name: 'Mona', password: 'first pass' });
+  assert.equal(mona.status, 201);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'Temp', password: 'long enough' })).status, 201);
+  const all = (await call('GET', '/api/admin/users')).body.users;
+  assert.deepEqual(all.map(u => [u.name, u.admin]), [['Alaa', true], ['Islam', true], ['Mona', false], ['Temp', false]]);
+  const temp = all.find(u => u.name === 'Temp').id;
+  assert.equal((await call('DELETE', '/api/admin/users/' + all[1].id)).status, 409); // admins stay
+  assert.equal((await call('DELETE', '/api/admin/users/' + temp)).status, 200);
+  assert.equal((await call('PATCH', '/api/admin/users/' + mona.body.id, { password: 'long enough' })).status, 200);
+
   cookie = '';
-  assert.equal((await call('POST', '/api/admin/signup', { name: 'x', password: 'long enough' })).status, 400);
-  assert.equal((await call('POST', '/api/admin/signup', { name: 'Mona', password: 'short' })).status, 400);
-  assert.equal((await call('POST', '/api/admin/signup', { name: 'ALAA', password: 'long enough' })).status, 409);
-  const up = await call('POST', '/api/admin/signup', { name: 'Mona', password: 'long enough' });
-  assert.equal(up.status, 201);
-  assert.equal((await call('GET', '/api/admin/me')).body.name, 'Mona');
+  assert.equal((await call('POST', '/api/admin/login', { name: 'Temp', password: 'long enough' })).status, 401);
+  assert.equal((await call('POST', '/api/admin/login', { name: 'Mona', password: 'first pass' })).status, 401);
+  assert.equal((await call('POST', '/api/admin/login', { name: 'Mona', password: 'long enough' })).status, 200);
+  assert.deepEqual((await call('GET', '/api/admin/me')).body, { admin: true, name: 'Mona', isAdmin: false });
+  // a user can't manage users
+  assert.equal((await call('GET', '/api/admin/users')).status, 403);
+  assert.equal((await call('POST', '/api/admin/users', { name: 'Friend', password: 'long enough' })).status, 403);
+  assert.equal((await call('PATCH', '/api/admin/users/' + all[0].id, { password: 'taken over' })).status, 403);
   assert.deepEqual((await call('GET', '/api/admin/lists')).body.lists, []);
 
   // Mona can't read or change anything of Alaa's

@@ -11,6 +11,7 @@ const admins = readAdmins(process.env);
 const missing = [
   !url && 'a Postgres database (DATABASE_URL)',
   !blobToken && 'a Blob store (BLOB_READ_WRITE_TOKEN)',
+  !admins.length && 'ADMIN_USERS (for example: Alaa:password)',
 ].filter(Boolean);
 
 module.exports = missing.length

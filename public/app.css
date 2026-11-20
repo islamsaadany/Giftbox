@@ -81,6 +81,12 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .who span{color:var(--muted)}
 .who .num{font-variant-numeric:tabular-nums;user-select:all}
 .who .rel{border:0;background:none;color:var(--accent);font-size:11px;font-weight:600;padding:4px 0 0;justify-self:start}
+.user-list{display:grid;gap:8px}
+.user{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.user div{display:grid;gap:2px;min-width:0;overflow-wrap:anywhere}
+.user div span:last-child{color:var(--muted);font-size:13px}
+.user .pill{justify-self:start}
+.top .share{gap:16px}
 .empty{text-align:center;padding:36px 16px;color:var(--muted);border:1.5px dashed var(--line);border-radius:var(--r);margin-top:16px}
 .empty h3{color:var(--ink);font-size:18px;margin-bottom:4px}
 
