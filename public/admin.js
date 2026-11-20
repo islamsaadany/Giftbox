@@ -10,7 +10,9 @@
   const cur = () => lists.find(l => l.id === listId);
   // The list's collaborators by name, without the signed-in user
   const others = l => l.collaborators.map(c => c.name).filter(n => viewing || n !== me);
-  const guestLink = l => location.origin + '/l/' + l.slug;
+  // The server names the public address, so links copied from a preview deployment still work for guests
+  let publicUrl = '';
+  const guestLink = l => (publicUrl || location.origin) + '/l/' + l.slug;
   const pick = id => { listId = id; try { sessionStorage.setItem('wb.list', id); } catch (_) {} };
   let me = '', theme = 'pink', isAdmin = false, view = 'lists', users = [];
   let viewing = null; // admin looking at another user's lists (view only): { id, name }
@@ -26,7 +28,7 @@
     try {
       const r = await api('GET', '/api/admin/me');
       if (!r.admin) return login();
-      me = r.name; isAdmin = r.isAdmin; theme = setTheme(r.theme);
+      me = r.name; isAdmin = r.isAdmin; theme = setTheme(r.theme); publicUrl = r.publicUrl || '';
       await refresh();
     } catch (e) { app.innerHTML = top(false) + `<div class="empty"><h3>Couldn't load</h3>${esc(problem(e))}</div>`; }
   }
@@ -44,7 +46,7 @@
       busy($('lgo'), async () => {
         try {
           const r = await api('POST', '/api/admin/login', { name: $('un').value, password: $('pw').value });
-          me = r.name; isAdmin = r.isAdmin; theme = setTheme(r.theme); filter = 'all';
+          me = r.name; isAdmin = r.isAdmin; theme = setTheme(r.theme); publicUrl = r.publicUrl || ''; filter = 'all';
           await refresh();
         } catch (x) { const el = $('lge'); if (el) el.textContent = x.code === 'wrong_login' ? 'That username or password isn’t right.' : problem(x); }
       });
@@ -74,7 +76,8 @@
     if (!l) h += viewing ? `<div class="empty"><h3>No lists yet</h3>${esc(viewing.name)} hasn't created a list.</div>` : `<div class="empty"><h3>No lists yet</h3>Create your first list, then add the gifts you'd like.</div>`;
     else {
       const taken = l.items.filter(i => leftOf(i) === 0).length, avail = l.items.length - taken;
-      const shown = l.items.filter(i => filter === 'all' || (filter === 'taken' ? resN(i) > 0 : leftOf(i) > 0));
+      const shown = l.items.filter(i => filter === 'all' || (filter === 'taken' ? resN(i) > 0 : leftOf(i) > 0))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })); // A–Z, like the guest page
       h += `<section class="panel">
         <div class="panel-head"><div><div class="eyebrow">Gift list${l.mine ? '' : ' · shared by ' + esc(l.owner)}</div><h2>${esc(l.name)}</h2>${others(l).length ? `<p class="hint">${l.mine || viewing ? 'Shared with' : 'Also shared with'} ${esc(others(l).join(', '))}</p>` : ''}</div>
           ${viewing ? '' : '<div class="share"><button class="btn ghost" id="edit-list">Rename</button><button class="btn primary" id="add-item">+ Add item</button></div>'}</div>
