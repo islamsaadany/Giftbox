@@ -3,6 +3,7 @@
   const slug = location.pathname.split('/')[2] || '';
   const app = $('app');
   let list = null, sort = 'default';
+  const brand = `<header class="top"><div class="brand">${gift}Wishbox</div></header>`;
 
   const priceLine = it => it.price === null ? '' : it.each ? `${money(it.price)} <span class="each">each</span>` : money(it.price);
   const pic = it => `<div class="pic">${it.photo ? `<img src="${esc(it.photo)}" alt="" loading="lazy">` : gift}${it.left > 1 ? `<span class="qty">× ${it.left}<small>needed</small></span>` : ''}</div>`;
@@ -12,9 +13,9 @@
     try { list = await api('GET', '/api/l/' + encodeURIComponent(slug)); }
     catch (e) {
       list = null;
-      app.innerHTML = e.status === 404
+      app.innerHTML = brand + (e.status === 404
         ? `<div class="empty"><h3>This list isn't available</h3>The link may be old. Ask for a new one.</div>`
-        : `<div class="empty"><h3>Couldn't load the list</h3>${esc(problem(e))}<div style="margin-top:12px"><button class="btn" id="retry">Try again</button></div></div>`;
+        : `<div class="empty"><h3>Couldn't load the list</h3>${esc(problem(e))}<div style="margin-top:12px"><button class="btn" id="retry">Try again</button></div></div>`);
       const r = $('retry'); if (r) r.onclick = load;
       return;
     }
@@ -30,7 +31,7 @@
       if (x === null && y === null) return 0; if (x === null) return 1; if (y === null) return -1;
       return sort === 'low' ? x - y : y - x;
     });
-    let h = `<section class="hero"><h1>${esc(list.name)}</h1>${list.note ? `<p>${esc(list.note)}</p>` : ''}</section>`;
+    let h = brand + `<section class="hero"><h1>${esc(list.name)}</h1>${list.note ? `<p>${esc(list.note)}</p>` : ''}</section>`;
     if (!av.length) {
       h += list.total
         ? `<div class="empty"><h3>Every gift has been reserved</h3>Thank you all. Nothing left to pick right now.</div>`

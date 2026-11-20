@@ -83,7 +83,7 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .empty h3{color:var(--ink);font-size:18px;margin-bottom:4px}
 
 /* guest */
-.hero{padding-block:12px 0}
+.hero{padding-block:2px 0}
 .hero h1{font-size:22px;line-height:1.2}
 .hero p{color:var(--muted);font-size:13px;margin:2px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
