@@ -185,8 +185,6 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .lp-more{transform:translateY(calc(var(--mdy,0px)*var(--p)))}
 .lp-add{transform:translateY(calc(var(--ady,0px)*var(--p)))}
 .lp-plus{display:none}
-/* filters kept pinned under the slim row */
-.lpanel.pinf .lp-filters{opacity:1;transform:translateY(calc(var(--fdy,0px)*var(--p)))}
 @media (max-width:599px){
   .lp-slim{left:16px}
   .lp-add{transform:none}

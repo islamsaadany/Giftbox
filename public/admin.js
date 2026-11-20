@@ -72,16 +72,13 @@
      page has scrolled past it, down to one slim row: the list name, "more" and Add item. A gap under it grows by the
      same amount, so the cards below never jump. Positions are measured from the tall layout each time it is drawn. */
   const SLIM = 56, NAME_SHRINK = 19 / 24;
-  const pinFilters = () => false; // true: the filter buttons stay pinned under the slim row
   let panel = null, panelQueued = false;
   function setupPanel() {
     const box = $('lpanel'); panel = null;
     if (!box) return;
-    const stick = box.parentElement, h2 = box.querySelector('h2'), more = $('more'), add = $('add-item'), plus = $('add-plus'), filters = box.querySelector('.lp-filters');
+    const h2 = box.querySelector('h2'), more = $('more'), add = $('add-item'), plus = $('add-plus');
     box.style.height = ''; $('lp-gap').style.height = ''; box.style.setProperty('--p', 0); box.classList.remove('m', 'slimmed');
-    box.classList.toggle('pinf', pinFilters());
     const tall = box.offsetHeight, phone = getComputedStyle(plus).display !== 'none';
-    const slim = SLIM + (pinFilters() ? filters.offsetHeight + 10 : 0);
     // Room for the name in the slim row, left of the buttons
     const firstButton = phone ? box.clientWidth - 16 - 40 - 8 - 40 : more.offsetLeft;
     box.style.setProperty('--rsv', (box.clientWidth - firstButton + 8) + 'px');
@@ -91,15 +88,14 @@
     box.style.setProperty('--ndy', ((SLIM - h2.offsetHeight * NAME_SHRINK) / 2 - h2.offsetTop) + 'px');
     box.style.setProperty('--mdy', (8 - more.offsetTop) + 'px');
     box.style.setProperty('--ady', (8 - add.offsetTop) + 'px');
-    box.style.setProperty('--fdy', (SLIM - filters.offsetTop) + 'px');
-    panel = { box, stick, tall, slim };
+    panel = { box, tall };
     squeezePanel();
   }
   function squeezePanel() {
     panelQueued = false;
     // While a form is open the page is held still (see lock() in ui.js): leave the panel as it is
     if (!panel || !panel.box.isConnected || document.body.classList.contains('locked')) return;
-    const { box, stick, tall, slim } = panel, range = tall - slim;
+    const { box, tall } = panel, range = tall - SLIM;
     // How far the page has scrolled past the point where the panel reaches the top (its wrapper starts 8px above the marker)
     const past = 8 - $('lp-top').getBoundingClientRect().top;
     const p = range > 0 ? Math.min(1, Math.max(0, past) / range) : 0;
