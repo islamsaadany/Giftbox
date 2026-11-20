@@ -110,6 +110,58 @@ test('deleting a list removes its link; logout ends the session', async () => {
   assert.equal((await call('GET', '/api/admin/lists')).status, 401);
 });
 
+test('anyone can create an account, and sees only their own lists', async () => {
+  await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' });
+  const alaaCookie = cookie;
+  const theirs = (await call('POST', '/api/admin/lists', { name: 'Alaa only' })).body.id;
+  const item = (await call('POST', `/api/admin/lists/${theirs}/items`, { name: 'Stroller', photo: JPEG })).body.id;
+  const theirSlug = (await call('GET', '/api/admin/lists')).body.lists.find(l => l.id === theirs).slug;
+  await call('POST', `/api/l/${theirSlug}/items/${item}/reserve`, { name: 'Nour', mobile: '01011112222' }, { auth: false });
+  const resv = (await call('GET', '/api/admin/lists')).body.lists.find(l => l.id === theirs).items[0].reservations[0].id;
+
+  cookie = '';
+  assert.equal((await call('POST', '/api/admin/signup', { name: 'x', password: 'long enough' })).status, 400);
+  assert.equal((await call('POST', '/api/admin/signup', { name: 'Mona', password: 'short' })).status, 400);
+  assert.equal((await call('POST', '/api/admin/signup', { name: 'ALAA', password: 'long enough' })).status, 409);
+  const up = await call('POST', '/api/admin/signup', { name: 'Mona', password: 'long enough' });
+  assert.equal(up.status, 201);
+  assert.equal((await call('GET', '/api/admin/me')).body.name, 'Mona');
+  assert.deepEqual((await call('GET', '/api/admin/lists')).body.lists, []);
+
+  // Mona can't read or change anything of Alaa's
+  assert.equal((await call('PATCH', '/api/admin/lists/' + theirs, { name: 'Mine now' })).status, 404);
+  assert.equal((await call('POST', `/api/admin/lists/${theirs}/items`, { name: 'Sneaky' })).status, 404);
+  assert.equal((await call('PATCH', '/api/admin/items/' + item, { name: 'Sneaky' })).status, 404);
+  assert.equal((await call('DELETE', '/api/admin/items/' + item)).status, 404);
+  assert.equal((await call('DELETE', '/api/admin/reservations/' + resv)).status, 404);
+  assert.equal((await call('DELETE', '/api/admin/lists/' + theirs)).status, 404);
+
+  const mine = (await call('POST', '/api/admin/lists', { name: 'Mona list' })).body.id;
+  assert.deepEqual((await call('GET', '/api/admin/lists')).body.lists.map(l => l.id), [mine]);
+  await call('POST', '/api/admin/logout', {});
+  assert.equal((await call('POST', '/api/admin/login', { name: 'mona', password: 'long enough' })).status, 200);
+  assert.deepEqual((await call('GET', '/api/admin/lists')).body.lists.map(l => l.name), ['Mona list']);
+
+  cookie = alaaCookie;
+  const l = (await call('GET', '/api/admin/lists')).body.lists.find(x => x.id === theirs);
+  assert.deepEqual([l.name, l.items[0].name, l.items[0].reservations.length], ['Alaa only', 'Stroller', 1]);
+  assert.ok(!(await call('GET', '/api/admin/lists')).body.lists.some(x => x.id === mine));
+});
+
+test('lists from before accounts go to the first ADMIN_USERS account', async () => {
+  await db.query("INSERT INTO lists (slug, name, created_at) VALUES ('oldlist22', 'Old list', 1)");
+  const app2 = createApp({ db, photos: openPhotos({ dir: path.join(dataDir, 'photos') }), admins: [{ name: 'Alaa', password: 'changed in env' }, { name: 'Islam', password: 'second pass' }] });
+  const s2 = await new Promise(r => { const s = app2.listen(0, () => r(s)); });
+  const old = base; base = 'http://127.0.0.1:' + s2.address().port;
+  try {
+    // the stored password wins over a later change in ADMIN_USERS
+    assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' })).status, 200);
+    assert.ok((await call('GET', '/api/admin/lists')).body.lists.some(l => l.name === 'Old list'));
+    await call('POST', '/api/admin/login', { name: 'Islam', password: 'second pass' });
+    assert.ok(!(await call('GET', '/api/admin/lists')).body.lists.some(l => l.name === 'Old list'));
+  } finally { base = old; s2.close(); }
+});
+
 test('two guests racing for the last piece: only one wins', async () => {
   await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' });
   const l = (await call('POST', '/api/admin/lists', { name: 'Race' })).body.id;

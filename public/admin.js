@@ -28,18 +28,33 @@
     } catch (e) { app.innerHTML = top(false) + `<div class="empty"><h3>Couldn't load</h3>${esc(problem(e))}</div>`; }
   }
 
-  function login() {
+  function login(signup) {
     app.innerHTML = top(false) + `<div class="center"><form class="panel" id="lg" novalidate>
-      <div><div class="eyebrow">Admin</div><h1>Sign in</h1></div>
-      <div class="field"><label for="un">Name</label><input id="un" autocomplete="username" autocapitalize="words" maxlength="60"></div>
-      <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div>
+      <div><div class="eyebrow">Your gift lists</div><h1>${signup ? 'Create account' : 'Sign in'}</h1></div>
+      <div class="field"><label for="un">Username</label><input id="un" autocomplete="username" autocapitalize="words" maxlength="30"></div>
+      <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" maxlength="200">${signup ? '<span class="hint">At least 8 characters. Keep it safe: it can’t be recovered.</span>' : ''}</div>
       <div class="err" id="lge" role="alert"></div>
-      <button class="btn primary" id="lgo">Sign in</button></form></div>`;
+      <button class="btn primary" id="lgo">${signup ? 'Create account' : 'Sign in'}</button>
+      <button type="button" class="link-btn" id="lgs">${signup ? 'I already have an account' : 'New here? Create an account'}</button></form></div>`;
+    $('lgs').onclick = () => login(!signup);
     $('lg').onsubmit = e => {
       e.preventDefault();
+      const name = $('un').value.trim(), password = $('pw').value, err = $('lge');
+      if (signup && name.length < 2) { err.textContent = 'Choose a username of at least 2 characters.'; return; }
+      if (signup && password.length < 8) { err.textContent = 'The password needs at least 8 characters.'; return; }
       busy($('lgo'), async () => {
-        try { me = (await api('POST', '/api/admin/login', { name: $('un').value, password: $('pw').value })).name; await refresh(); }
-        catch (x) { const el = $('lge'); if (el) el.textContent = x.code === 'wrong_login' ? 'That name or password isn’t right.' : problem(x); }
+        try {
+          me = (await api('POST', signup ? '/api/admin/signup' : '/api/admin/login', { name, password })).name;
+          lists = []; pick(null); filter = 'all';
+          await refresh();
+        } catch (x) {
+          const el = $('lge'); if (!el) return;
+          el.textContent = x.code === 'wrong_login' ? 'That username or password isn’t right.'
+            : x.code === 'name_taken' ? 'That username is taken. Try another one.'
+            : x.code === 'bad_name' ? 'Usernames are 2 to 30 letters or numbers (spaces, dots and dashes are fine).'
+            : x.code === 'bad_password' ? 'The password needs at least 8 characters.'
+            : problem(x);
+        }
       });
     };
     $('un').focus();
@@ -90,7 +105,7 @@
   function bind() {
     const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
     const item = id => cur().items.find(i => String(i.id) === id);
-    on('logout', async () => { try { await api('POST', '/api/admin/logout', {}); } catch (_) {} login(); });
+    on('logout', async () => { try { await api('POST', '/api/admin/logout', {}); } catch (_) {} lists = []; pick(null); login(); });
     on('new-list', () => listForm());
     on('edit-list', () => listForm(cur()));
     on('add-item', () => itemForm());
