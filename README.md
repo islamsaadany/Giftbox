@@ -4,7 +4,7 @@ Gift lists you share with a link. An admin gives each person a username and pass
 
 - **Users**: `/admin`. Each person signs in with the username and password the admin gave them and sees only their own lists: items, every reservation (name, mobile, how many, date), release per reservation.
 - **Colour**: each user picks a colour theme (pink, light blue, teal, green, purple, orange) under **Colour**. Their guests see their lists in it too.
-- **Admins**: the accounts named in `ADMIN_USERS`, or only those listed in `ADMINS` when it is set. They get a **Users** page to create users, set a new password for anyone, and delete users. There is no sign-up. Admins can also keep lists of their own.
+- **Admins**: the accounts named in `ADMIN_USERS`, or only those listed in `ADMINS` when it is set. They get a **Users** page to create users, look at any user's lists and reservations (view only), set a new password for anyone, and delete users. There is no sign-up. Admins can also keep lists of their own.
 - **Guests**: `/l/<slug>`, a random 8-character link per list. The guest API never returns reservations, names or mobiles.
 
 ## Publish on Vercel

@@ -223,28 +223,28 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
     res.json({ ok: true });
   });
 
-  admin.get('/lists', async (req, res) => {
+  // A user's lists with their items and reservations
+  async function listsOf(userId) {
     const [lists, items, resv] = await Promise.all([
-      rows('SELECT id, slug, name, note FROM lists WHERE user_id = $1 ORDER BY created_at, id', [req.user.id]),
-      rows('SELECT i.id, i.list_id, i.name, i.price_egp, i.quantity, i.shop_url, i.photo FROM items i JOIN lists l ON l.id = i.list_id WHERE l.user_id = $1 ORDER BY i.id DESC', [req.user.id]),
+      rows('SELECT id, slug, name, note FROM lists WHERE user_id = $1 ORDER BY created_at, id', [userId]),
+      rows('SELECT i.id, i.list_id, i.name, i.price_egp, i.quantity, i.shop_url, i.photo FROM items i JOIN lists l ON l.id = i.list_id WHERE l.user_id = $1 ORDER BY i.id DESC', [userId]),
       rows(`SELECT r.id, r.item_id, r.guest_name, r.guest_mobile, r.count, r.created_at FROM reservations r
-            JOIN items i ON i.id = r.item_id JOIN lists l ON l.id = i.list_id WHERE l.user_id = $1 ORDER BY r.created_at, r.id`, [req.user.id]),
+            JOIN items i ON i.id = r.item_id JOIN lists l ON l.id = i.list_id WHERE l.user_id = $1 ORDER BY r.created_at, r.id`, [userId]),
     ]);
     const byItem = new Map();
     for (const r of resv) {
       if (!byItem.has(r.item_id)) byItem.set(r.item_id, []);
       byItem.get(r.item_id).push({ id: r.id, name: r.guest_name, mobile: r.guest_mobile, count: r.count, at: Number(r.created_at) });
     }
-    res.json({
-      lists: lists.map(l => ({
-        ...l,
-        items: items.filter(i => i.list_id === l.id).map(i => ({
-          id: i.id, name: i.name, price: i.price_egp, qty: i.quantity, link: i.shop_url || '', photo: photos.url(i.photo),
-          reservations: byItem.get(i.id) || [],
-        })),
+    return lists.map(l => ({
+      ...l,
+      items: items.filter(i => i.list_id === l.id).map(i => ({
+        id: i.id, name: i.name, price: i.price_egp, qty: i.quantity, link: i.shop_url || '', photo: photos.url(i.photo),
+        reservations: byItem.get(i.id) || [],
       })),
-    });
-  });
+    }));
+  }
+  admin.get('/lists', async (req, res) => res.json({ lists: await listsOf(req.user.id) }));
 
   admin.post('/lists', async (req, res) => {
     const name = text(req.body?.name, 60, 'bad_name', true), note = text(req.body?.note, 160, 'bad_note');
@@ -337,6 +337,13 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
       [name, name.toLowerCase(), await hashPassword(password), Date.now()]);
     if (!u) throw new HttpError(409, 'name_taken');
     res.status(201).json({ id: u.id });
+  });
+
+  // An admin can look at a user's lists (view only: every change stays with the owner)
+  users.get('/:id/lists', async (req, res) => {
+    const u = await one('SELECT id, name FROM users WHERE id = $1', [idParam(req.params.id)]);
+    if (!u) throw new HttpError(404, 'not_found');
+    res.json({ name: u.name, lists: await listsOf(u.id) });
   });
 
   // A new password signs the user out everywhere (except the admin changing their own)
