@@ -3,6 +3,7 @@
 Gift lists you share with a link. An admin gives each person a username and password; each person makes their own lists and adds gifts; guests open a list's link, see only what is still available, and reserve one (or some pieces of one) with their name and mobile number.
 
 - **Users**: `/admin`. Each person signs in with the username and password the admin gave them and sees only their own lists: items, every reservation (name, mobile, how many, date), release per reservation.
+- **Collaborators**: a list's owner can add other users by username under **Collaborators**. They see the list and its reservations and can rename it, add, edit and delete its gifts, and release reservations. Only the owner deletes the list or chooses collaborators; a collaborator can leave.
 - **Colour**: each user picks a colour theme (pink, light blue, teal, green, purple, orange) under **Colour**. Their guests see their lists in it too.
 - **Admins**: the accounts named in `ADMIN_USERS`, or only those listed in `ADMINS` when it is set. They get a **Users** page to create users, look at any user's lists and reservations (view only), set a new password for anyone, and delete users. There is no sign-up. Admins can also keep lists of their own.
 - **Guests**: `/l/<slug>`, a random 8-character link per list. The guest API never returns reservations, names or mobiles.
@@ -44,7 +45,7 @@ Then open http://localhost:3000/admin and sign in as the admin. Add everyone els
 
 ## Data
 
-Postgres tables: `users`, `lists` (each owned by a user), `items`, `reservations`, plus `sessions` and `login_failures` for the sign-in. Passwords are stored as scrypt hashes; a forgotten one is replaced by an admin on the Users page. Pictures are JPEGs, resized in the browser to at most 640px before upload.
+Postgres tables: `users`, `lists` (each owned by a user), `list_collaborators`, `items`, `reservations`, plus `sessions` and `login_failures` for the sign-in. Passwords are stored as scrypt hashes; a forgotten one is replaced by an admin on the Users page. Pictures are JPEGs, resized in the browser to at most 640px before upload.
 
 Reserving locks the item and re-checks the pieces left inside a transaction, so two guests can't take the same last pieces. The owner can't set a quantity below what is already reserved.
 

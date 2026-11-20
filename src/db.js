@@ -19,6 +19,12 @@ const SCHEMA = `
   );
   ALTER TABLE lists ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
   CREATE INDEX IF NOT EXISTS lists_user ON lists(user_id);
+  CREATE TABLE IF NOT EXISTS list_collaborators (
+    list_id INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (list_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS list_collaborators_user ON list_collaborators(user_id);
   CREATE TABLE IF NOT EXISTS items (
     id         SERIAL PRIMARY KEY,
     list_id    INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
