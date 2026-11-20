@@ -165,16 +165,11 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .lp-chip[aria-pressed="true"] b{color:inherit}
 .lp-links{grid-area:links;justify-self:end;display:flex;gap:6px}
 .lp-link{display:flex;align-items:center;gap:6px;border:0;background:none;border-radius:10px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--accent-deep);text-decoration:none}
+/* Phone: the panel is only the name and the filters; the actions are in the bottom bar (.bbar) */
 @media (max-width:599px){
-  .lpanel{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"title title" "chips chips" "copy add";padding:16px;gap:14px 8px}
-  .lp-title{padding-right:48px}
+  .lpanel{grid-template-columns:minmax(0,1fr);grid-template-areas:"title" "chips";padding:14px 16px;gap:10px}
   .lpanel h2{font-size:21px}
-  .lp-more{position:absolute;top:16px;right:16px}
-  .lp-rule,.lp-preview{display:none}
-  .lp-links{display:contents}
-  .lp-copy{grid-area:copy;justify-content:center;height:42px;border-radius:999px;background:var(--surface);color:var(--ink);font-size:14px}
-  .lp-copy svg{display:none}
-  .lp-add{height:42px}
+  .lpanel .lp-more,.lpanel .lp-add,.lp-rule,.lp-links{display:none}
 }
 .lp-eyebrow,.lp-with,.lp-rule,.lp-links,.lp-filters,.lpanel:not(.m) h2{opacity:calc(1 - 2.4*var(--p))}
 /* "m": the name is one line and fits the slim row, so it shrinks and slides there instead of fading */
@@ -184,13 +179,17 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .lpanel.m .lp-slim{display:none}
 .lp-more{transform:translateY(calc(var(--mdy,0px)*var(--p)))}
 .lp-add{transform:translateY(calc(var(--ady,0px)*var(--p)))}
-.lp-plus{display:none}
+@media (max-width:599px){.lp-slim{left:16px}}
+/* bottom bar on a phone: add an item, copy the guest link, and the rest under More */
+.bbar{display:none}
 @media (max-width:599px){
-  .lp-slim{left:16px}
-  .lp-add{transform:none}
-  .lp-add,.lp-copy{opacity:calc(1 - 2.4*var(--p))}
-  .lp-plus{display:grid;place-items:center;position:absolute;top:8px;right:64px;width:40px;height:40px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-ink);opacity:calc(2.5*var(--p) - 1.125);pointer-events:none}
-  .lpanel.slimmed .lp-plus{pointer-events:auto}
+  .bbar{display:flex;align-items:center;gap:8px;position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--surface);border-top:1px solid var(--line);
+    padding:8px max(12px,env(safe-area-inset-left,0px)) calc(8px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-right,0px))}
+  .bb-add{flex:1;height:48px;border-radius:999px;font-size:16px}
+  .bb-side{flex:none;width:76px;height:48px;display:grid;justify-items:center;align-content:center;gap:2px;border:0;background:none;border-radius:12px;color:var(--ink);font-size:11px;font-weight:600}
+  .bb-side svg{color:var(--accent-deep)}
+  body:has(.bbar){padding-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
+  body:has(.bbar) .toast{bottom:calc(80px + env(safe-area-inset-bottom,0px))}
 }
 .menu{display:grid;gap:8px}
 .menu .btn{text-align:left;padding:12px 14px}
