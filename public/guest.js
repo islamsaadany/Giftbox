@@ -72,6 +72,7 @@
       return;
     }
     document.title = list.name;
+    WB.setTheme(list.theme);
     render();
   }
 

@@ -2,6 +2,14 @@
    without one it runs an embedded Postgres (PGlite) for local development and tests. */
 
 const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS users (
+    id            SERIAL PRIMARY KEY,
+    name          TEXT NOT NULL,
+    name_key      TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at    BIGINT NOT NULL
+  );
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'pink';
   CREATE TABLE IF NOT EXISTS lists (
     id         SERIAL PRIMARY KEY,
     slug       TEXT NOT NULL UNIQUE,
@@ -9,6 +17,8 @@ const SCHEMA = `
     note       TEXT NOT NULL DEFAULT '',
     created_at BIGINT NOT NULL
   );
+  ALTER TABLE lists ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+  CREATE INDEX IF NOT EXISTS lists_user ON lists(user_id);
   CREATE TABLE IF NOT EXISTS items (
     id         SERIAL PRIMARY KEY,
     list_id    INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
@@ -34,6 +44,7 @@ const SCHEMA = `
     expires_at BIGINT NOT NULL
   );
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS admin_name TEXT;
+  ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
   CREATE TABLE IF NOT EXISTS login_failures (
     ip TEXT NOT NULL,
     at BIGINT NOT NULL
