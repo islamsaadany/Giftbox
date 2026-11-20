@@ -1,0 +1,7 @@
+{
+  "framework": null,
+  "functions": {
+    "api/index.js": { "includeFiles": "public/**", "maxDuration": 30 }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
+}

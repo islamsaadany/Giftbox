@@ -4,9 +4,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createApp } = require('../src/app');
+const { openDb } = require('../src/db');
+const { openPhotos } = require('../src/photos');
 
 const JPEG = 'data:image/jpeg;base64,' + Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64)]).toString('base64');
-let server, base, cookie = '', dataDir;
+let server, base, cookie = '', dataDir, db;
 
 async function call(method, url, body, { auth = true } = {}) {
   const res = await fetch(base + url, {
@@ -21,11 +23,12 @@ async function call(method, url, body, { auth = true } = {}) {
 
 test.before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wishbox-'));
-  const app = createApp({ dataDir, adminPassword: 'correct horse' });
+  db = openDb({ url: process.env.TEST_DATABASE_URL }); // set it to run against a real Postgres
+  const app = createApp({ db, photos: openPhotos({ dir: path.join(dataDir, 'photos') }), adminPassword: 'correct horse' });
   await new Promise(r => { server = app.listen(0, r); });
   base = 'http://127.0.0.1:' + server.address().port;
 });
-test.after(() => { server.close(); fs.rmSync(dataDir, { recursive: true, force: true }); });
+test.after(async () => { server.close(); await db.close(); fs.rmSync(dataDir, { recursive: true, force: true }); });
 
 test('admin API needs a login', async () => {
   assert.equal((await call('GET', '/api/admin/lists')).status, 401);
@@ -100,4 +103,18 @@ test('deleting a list removes its link; logout ends the session', async () => {
   await call('POST', '/api/admin/logout', {});
   cookie = old;
   assert.equal((await call('GET', '/api/admin/lists')).status, 401);
+});
+
+test('two guests racing for the last piece: only one wins', async () => {
+  await call('POST', '/api/admin/login', { password: 'correct horse' });
+  const l = (await call('POST', '/api/admin/lists', { name: 'Race' })).body.id;
+  const it = (await call('POST', `/api/admin/lists/${l}/items`, { name: 'Bathtub' })).body.id;
+  const s = (await call('GET', '/api/admin/lists')).body.lists.find(x => x.id === l).slug;
+  const tries = await Promise.all([1, 2, 3, 4].map(n => call('POST', `/api/l/${s}/items/${it}/reserve`, { name: 'Guest ' + n, mobile: '0100000000' + n }, { auth: false })));
+  assert.deepEqual(tries.map(t => t.status).sort(), [201, 409, 409, 409]);
+});
+
+test('too many wrong passwords locks sign-in for a while', async () => {
+  for (let i = 0; i < 10; i++) await call('POST', '/api/admin/login', { password: 'guess' + i });
+  assert.equal((await call('POST', '/api/admin/login', { password: 'correct horse' })).status, 429);
 });

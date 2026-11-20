@@ -1,47 +1,87 @@
-const { DatabaseSync } = require('node:sqlite');
-const fs = require('node:fs');
-const path = require('node:path');
+/* Postgres access. With a connection string it uses a real Postgres (Neon, Vercel Postgres, ...);
+   without one it runs an embedded Postgres (PGlite) for local development and tests. */
 
-function openDb(dataDir) {
-  fs.mkdirSync(path.join(dataDir, 'photos'), { recursive: true });
-  const db = new DatabaseSync(path.join(dataDir, 'wishbox.db'));
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
-    PRAGMA busy_timeout = 5000;
+const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS lists (
+    id         SERIAL PRIMARY KEY,
+    slug       TEXT NOT NULL UNIQUE,
+    name       TEXT NOT NULL,
+    note       TEXT NOT NULL DEFAULT '',
+    created_at BIGINT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS items (
+    id         SERIAL PRIMARY KEY,
+    list_id    INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    price_egp  DOUBLE PRECISION,
+    quantity   INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+    shop_url   TEXT,
+    photo      TEXT,
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS items_list ON items(list_id);
+  CREATE TABLE IF NOT EXISTS reservations (
+    id           SERIAL PRIMARY KEY,
+    item_id      INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    guest_name   TEXT NOT NULL,
+    guest_mobile TEXT NOT NULL,
+    count        INTEGER NOT NULL CHECK (count >= 1),
+    created_at   BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS reservations_item ON reservations(item_id);
+  CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    expires_at BIGINT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS login_failures (
+    ip TEXT NOT NULL,
+    at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS login_failures_ip ON login_failures(ip, at);
+`;
 
-    CREATE TABLE IF NOT EXISTS lists (
-      id         INTEGER PRIMARY KEY,
-      slug       TEXT NOT NULL UNIQUE,
-      name       TEXT NOT NULL,
-      note       TEXT NOT NULL DEFAULT '',
-      created_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS items (
-      id         INTEGER PRIMARY KEY,
-      list_id    INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
-      name       TEXT NOT NULL,
-      price_egp  REAL,
-      quantity   INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 1),
-      shop_url   TEXT,
-      photo      TEXT,
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS items_list ON items(list_id);
-    CREATE TABLE IF NOT EXISTS reservations (
-      id           INTEGER PRIMARY KEY,
-      item_id      INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-      guest_name   TEXT NOT NULL,
-      guest_mobile TEXT NOT NULL,
-      count        INTEGER NOT NULL CHECK (count >= 1),
-      created_at   INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS reservations_item ON reservations(item_id);
-    CREATE TABLE IF NOT EXISTS sessions (
-      token_hash TEXT PRIMARY KEY,
-      expires_at INTEGER NOT NULL
-    );
-  `);
+/* Both drivers are wrapped to the same shape:
+     query(sql, params) -> { rows, count }
+     tx(async q => ...) -> runs q(sql, params) calls in one transaction */
+
+function pgDb(url) {
+  const { Pool } = require('pg');
+  const pool = new Pool({ connectionString: url, max: 3 });
+  const shape = r => ({ rows: r.rows, count: r.rowCount });
+  return {
+    query: async (sql, params) => shape(await pool.query(sql, params)),
+    async tx(fn) {
+      const c = await pool.connect();
+      try {
+        await c.query('BEGIN');
+        const out = await fn(async (sql, params) => shape(await c.query(sql, params)));
+        await c.query('COMMIT');
+        return out;
+      } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; }
+      finally { c.release(); }
+    },
+    init: () => pool.query(SCHEMA),
+    close: () => pool.end(),
+  };
+}
+
+function embeddedDb(dir) {
+  const { PGlite } = require('@electric-sql/pglite');
+  const db = dir ? new PGlite(dir) : new PGlite();
+  const shape = r => ({ rows: r.rows, count: r.affectedRows ?? 0 });
+  return {
+    query: async (sql, params) => shape(await db.query(sql, params)),
+    tx: fn => db.transaction(t => fn(async (sql, params) => shape(await t.query(sql, params)))),
+    init: () => db.exec(SCHEMA),
+    close: () => db.close(),
+  };
+}
+
+function openDb({ url, dir } = {}) {
+  const db = url ? pgDb(url) : embeddedDb(dir);
+  let ready;
+  // Create the tables once per process; retry on the next request if it failed
+  db.ready = () => (ready ||= Promise.resolve(db.init()).catch(e => { ready = null; throw e; }));
   return db;
 }
 
