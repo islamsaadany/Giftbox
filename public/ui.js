@@ -1,6 +1,8 @@
 /* Shared bits for the guest and admin pages: escaping, money, API calls, toast, bottom sheet */
 window.WB = (function () {
   const gift = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M3 12h18M12 8v13"/><path d="M12 8c-2-3-6-3-6-1s3 1 6 1c3 0 6 1 6-1s-4-2-6 1z"/></svg>';
+  // The app icon, on a white ground so it shows on the pink banner
+  const logo = '<svg viewBox="0 0 160 160" aria-hidden="true"><rect width="160" height="160" rx="36" fill="#FFFFFF"/><path d="M80 22l6 16 16 6-16 6-6 16-6-16-16-6 16-6z" fill="#C93A64"/><path d="M116 30l3 8 8 3-8 3-3 8-3-8-8-3 8-3z" fill="#F06A92"/><rect x="44" y="88" width="72" height="44" rx="8" fill="#C93A64"/><rect x="38" y="72" width="84" height="20" rx="6" fill="#A82C52"/><rect x="74" y="72" width="12" height="60" fill="#FFFFFF"/></svg>';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const money = n => (n || n === 0 ? Number(n).toLocaleString('en-EG') + ' EGP' : '');
   const $ = id => document.getElementById(id);
@@ -68,5 +70,5 @@ window.WB = (function () {
     try { await fn(); } finally { btn.disabled = false; }
   }
 
-  return { gift, esc, money, $, api, problem, toast, open, close, confirmBox, busy };
+  return { gift, logo, esc, money, $, api, problem, toast, open, close, confirmBox, busy };
 })();

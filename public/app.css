@@ -5,14 +5,16 @@
   --ok:#2F8A5B; --ok-soft:#E3F3EA; --taken:#8A5A12; --taken-soft:#FBF0DC;
   --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
   --body:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-  --r:14px;
+  --r:14px; --accent-deep:#8E2545;
 }
 @media (prefers-color-scheme:dark){:root{
   --bg:#15141F; --surface:#1F1D2C; --ink:#EEEDF5; --muted:#A3A0B8; --line:#33304A;
   --accent:#F06A92; --accent-ink:#1A0D13; --accent-soft:#3A1E2A;
-  --ok:#6CCB97; --ok-soft:#1C3328; --taken:#E7B661; --taken-soft:#3A2E17; color-scheme:dark}}
+  --ok:#6CCB97; --ok-soft:#1C3328; --taken:#E7B661; --taken-soft:#3A2E17; --accent-deep:#F7A8BF; color-scheme:dark}}
 *{box-sizing:border-box}
 html,body{overflow-x:hidden;max-width:100%}
+/* clip (not hidden) on body: hidden would turn body into a scroll box and stop the pinned sort bar from sticking */
+@supports (overflow:clip){body{overflow-x:clip}}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
 body.locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
@@ -26,7 +28,7 @@ button{cursor:pointer}
 /* header */
 .top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-block:8px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:6px;font-family:var(--display);font-weight:700;font-size:16px}
-.brand svg{flex:none;width:20px;height:20px}
+.brand svg{flex:none;width:24px;height:24px}
 .link-btn{border:0;background:none;color:var(--muted);font-size:13px;font-weight:600;padding:6px 0}
 
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 14px;font-weight:600;font-size:14px}
@@ -82,10 +84,39 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .empty{text-align:center;padding:36px 16px;color:var(--muted);border:1.5px dashed var(--line);border-radius:var(--r);margin-top:16px}
 .empty h3{color:var(--ink);font-size:18px;margin-bottom:4px}
 
-/* guest */
-.hero{padding-block:2px 0}
-.hero h1{font-size:22px;line-height:1.2}
-.hero p{color:var(--muted);font-size:13px;margin:2px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* guest list page: a welcome banner that gives way to a slim bar when you scroll, with the sort buttons pinned under it */
+.banner{background:var(--accent-soft);border-radius:20px;padding:18px;display:grid;gap:12px;margin-top:max(12px,env(safe-area-inset-top,0px))}
+.mark{display:flex;align-items:center;gap:8px;font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.02em;color:var(--accent-deep)}
+.mark svg{width:26px;height:26px;flex:none}
+.banner h1{font-size:30px;line-height:1.1;overflow-wrap:anywhere}
+.banner p{margin:4px 0 0;font-size:14px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
+.slim{position:fixed;top:0;left:0;right:0;z-index:11;background:var(--bg);padding:max(8px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px));opacity:0;visibility:hidden}
+.slim.on{opacity:1;visibility:visible}
+@media (prefers-reduced-motion:no-preference){.slim{transform:translateY(-6px);transition:opacity .15s ease-out,transform .15s ease-out,visibility .15s}.slim.on{transform:none}}
+.slim-in{max-width:860px;margin:0 auto;background:var(--accent-soft);border-radius:16px;padding:8px 12px;display:flex;align-items:center;gap:10px}
+.slim-in svg{width:34px;height:34px;flex:none}
+.slim .t{flex:1;min-width:0;display:grid}
+.slim .t small{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-deep)}
+.slim .t b{font-family:var(--display);font-size:19px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slim .n{flex:none;font-size:12px;font-weight:600;color:var(--accent-deep);background:var(--surface);padding:5px 10px;border-radius:999px}
+/* a little wider than the cards so their soft shadow doesn't peek out beside the pinned bar */
+.sortwrap{position:sticky;top:var(--slim-h,0px);z-index:10;background:var(--bg);padding:10px 6px 8px;margin-inline:-6px}
+.segsort{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:3px}
+.segsort button{border:0;background:none;border-radius:9px;padding:8px 4px;font-size:12px;font-weight:600;color:var(--muted)}
+.segsort button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+/* guest cards: softer, with the price as the main line */
+.guest .grid{margin-top:2px}
+.guest .card{border:0;border-radius:18px;padding:8px;gap:8px;overflow:visible;box-shadow:0 1px 3px rgb(33 31 54 / .08)}
+.guest .pic{border-radius:12px}
+.guest .card-body{padding:0 4px 2px;gap:4px}
+.guest .card h3{font-family:var(--body);font-size:13px;line-height:1.35;font-weight:500;letter-spacing:0;color:var(--muted)}
+.guest .price{font-family:var(--display);font-size:17px;font-weight:700;min-height:0}
+.guest .each{font-family:var(--body)}
+.guest .qty{top:auto;right:auto;left:6px;bottom:6px;background:var(--surface);color:var(--ink);font-family:var(--body);font-size:11px;font-weight:600;padding:5px 8px;box-shadow:none}
+.guest .row{gap:0;padding-top:4px}
+.guest .row .btn.primary{border-radius:999px;font-size:13px;padding:9px 8px}
+.shoplink{display:block;font-size:12px;font-weight:600;text-align:center;padding:9px 0 5px;color:var(--accent-deep);text-decoration:none}
+.shoplink.none{visibility:hidden}
 
 /* reserve counter */
 .step-row{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--accent-soft);border-radius:12px;padding:12px}

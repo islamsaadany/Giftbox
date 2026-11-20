@@ -1,19 +1,26 @@
 (function () {
-  const { gift, esc, money, $, api, problem, open, close, busy } = WB;
+  const { gift, logo, esc, money, $, api, problem, open, close, busy } = WB;
   const slug = location.pathname.split('/')[2] || '';
-  const app = $('app');
-  let list = null, sort = 'default';
-  const brand = `<header class="top"><div class="brand">${gift}Wishbox</div></header>`;
+  const app = $('app'), slim = $('slim');
+  let list = null, sort = 'default', watcher = null;
 
   const priceLine = it => it.price === null ? '' : it.each ? `${money(it.price)} <span class="each">each</span>` : money(it.price);
-  const pic = it => `<div class="pic">${it.photo ? `<img src="${esc(it.photo)}" alt="" loading="lazy">` : gift}${it.left > 1 ? `<span class="qty">× ${it.left}<small>needed</small></span>` : ''}</div>`;
-  const shop = it => it.link ? `<a class="btn" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">Shop</a>` : '';
+  const pic = it => `<div class="pic">${it.photo ? `<img src="${esc(it.photo)}" alt="" loading="lazy">` : gift}${it.left > 1 ? `<span class="qty">${it.left} still needed</span>` : ''}</div>`;
+  // Always takes a line, so Reserve buttons line up across a row whether or not an item has a shop link
+  const shop = it => it.link ? `<a class="shoplink" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">View in shop</a>` : '<span class="shoplink none" aria-hidden="true">&nbsp;</span>';
+  const mark = `<div class="mark">${logo}Wishbox</div>`;
+
+  function message(html) {
+    showSlim(false);
+    slim.innerHTML = '';
+    app.innerHTML = `<section class="banner">${mark}</section>${html}`;
+  }
 
   async function load() {
     try { list = await api('GET', '/api/l/' + encodeURIComponent(slug)); }
     catch (e) {
       list = null;
-      app.innerHTML = brand + (e.status === 404
+      message(e.status === 404
         ? `<div class="empty"><h3>This list isn't available</h3>The link may be old. Ask for a new one.</div>`
         : `<div class="empty"><h3>Couldn't load the list</h3>${esc(problem(e))}<div style="margin-top:12px"><button class="btn" id="retry">Try again</button></div></div>`);
       const r = $('retry'); if (r) r.onclick = load;
@@ -23,7 +30,7 @@
     render();
   }
 
-  function render() {
+  function sorted() {
     const av = list.items.slice();
     // Items without a price go last
     if (sort !== 'default') av.sort((a, b) => {
@@ -31,24 +38,68 @@
       if (x === null && y === null) return 0; if (x === null) return 1; if (y === null) return -1;
       return sort === 'low' ? x - y : y - x;
     });
-    let h = brand + `<section class="hero"><h1>${esc(list.name)}</h1>${list.note ? `<p>${esc(list.note)}</p>` : ''}</section>`;
-    if (!av.length) {
+    return av;
+  }
+
+  function cards() {
+    const grid = $('grid');
+    grid.innerHTML = sorted().map(it => `<article class="card">${pic(it)}<div class="card-body">
+      <h3>${esc(it.name)}</h3>
+      <div class="price">${priceLine(it)}</div>
+      <div class="row"><button class="btn primary" data-pick="${it.id}">Reserve</button>${shop(it)}</div>
+    </div></article>`).join('');
+    grid.querySelectorAll('[data-pick]').forEach(b => (b.onclick = () => pickForm(list.items.find(i => String(i.id) === b.dataset.pick))));
+  }
+
+  function render() {
+    const n = list.items.length;
+    // The big banner scrolls away; this slim one takes its place at the top
+    slim.innerHTML = `<div class="slim-in">${logo}<div class="t"><small>Wishbox</small><b>${esc(list.name)}</b></div>${n ? `<span class="n">${n} ${n === 1 ? 'gift' : 'gifts'} left</span>` : ''}</div>`;
+    let h = `<section class="banner" id="banner">${mark}<div><h1>${esc(list.name)}</h1>${list.note ? `<p>${esc(list.note)}</p>` : ''}</div></section>`;
+    if (!n) {
       h += list.total
         ? `<div class="empty"><h3>Every gift has been reserved</h3>Thank you all. Nothing left to pick right now.</div>`
         : `<div class="empty"><h3>Nothing here yet</h3>Gifts will show up here soon.</div>`;
     } else {
-      h += `<div class="sortbar" role="group" aria-label="Sort by price">${[['default', 'Default'], ['low', 'Lowest price'], ['high', 'Highest price']]
-        .map(([k, t]) => `<button class="chip sm" data-sort="${k}" aria-current="${sort === k}">${t}</button>`).join('')}</div>
-      <div class="grid">${av.map(it => `<article class="card">${pic(it)}<div class="card-body">
-        <h3>${esc(it.name)}</h3>
-        <div class="meta"><span class="price">${priceLine(it)}</span></div>
-        <div class="row">${shop(it)}<button class="btn primary" data-pick="${it.id}">Reserve</button></div>
-      </div></article>`).join('')}</div>`;
+      h += `<div class="sortwrap"><div class="segsort" role="group" aria-label="Sort by price">${[['default', 'Default'], ['low', 'Lowest price'], ['high', 'Highest price']]
+        .map(([k, t]) => `<button data-sort="${k}" aria-pressed="${sort === k}">${t}</button>`).join('')}</div></div>
+      <div class="grid" id="grid"></div>`;
     }
     app.innerHTML = h;
-    app.querySelectorAll('[data-sort]').forEach(b => (b.onclick = () => { sort = b.dataset.sort; render(); }));
-    app.querySelectorAll('[data-pick]').forEach(b => (b.onclick = () => pickForm(list.items.find(i => String(i.id) === b.dataset.pick))));
+    if (n) {
+      cards();
+      // Sorting only redraws the cards, so the page doesn't jump while the sort buttons are pinned
+      app.querySelectorAll('[data-sort]').forEach(b => (b.onclick = () => {
+        sort = b.dataset.sort;
+        app.querySelectorAll('[data-sort]').forEach(x => x.setAttribute('aria-pressed', x === b));
+        const grid = $('grid'), bar = app.querySelector('.sortwrap');
+        // Hold the page height while the cards are redrawn, so the scroll position isn't lost
+        grid.style.minHeight = grid.offsetHeight + 'px';
+        cards();
+        grid.style.minHeight = '';
+        // If the buttons are pinned, bring the first gifts of the new order up under them
+        const under = slim.offsetHeight + bar.offsetHeight;
+        const gridTop = grid.getBoundingClientRect().top;
+        if (gridTop < under) scrollTo(0, scrollY + gridTop - under);
+      }));
+    }
+    watch();
   }
+
+  function showSlim(on) { slim.classList.toggle('on', on); slim.setAttribute('aria-hidden', String(!on)); }
+
+  /* Swap to the slim banner once the big one has scrolled up behind where the slim one sits */
+  function watch() {
+    if (watcher) watcher.disconnect();
+    const banner = $('banner');
+    const h = slim.offsetHeight;
+    document.documentElement.style.setProperty('--slim-h', h + 'px');
+    showSlim(false);
+    if (!banner || !('IntersectionObserver' in window)) return;
+    watcher = new IntersectionObserver(([e]) => showSlim(!e.isIntersecting && e.boundingClientRect.top < h), { rootMargin: `-${h}px 0px 0px 0px` });
+    watcher.observe(banner);
+  }
+  addEventListener('resize', () => { if (list) watch(); });
 
   function pickForm(it) {
     const lf = it.left, u = it.price; let c = 1;

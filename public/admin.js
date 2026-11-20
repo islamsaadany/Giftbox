@@ -1,5 +1,5 @@
 (function () {
-  const { gift, esc, money, $, api, problem, toast, open, close, confirmBox, busy } = WB;
+  const { gift, logo, esc, money, $, api, problem, toast, open, close, confirmBox, busy } = WB;
   const app = $('app');
   let lists = [], listId = null, filter = 'all';
   try { listId = Number(sessionStorage.getItem('wb.list')) || null; } catch (_) {}
@@ -11,7 +11,7 @@
   const guestLink = l => location.origin + '/l/' + l.slug;
   const pick = id => { listId = id; try { sessionStorage.setItem('wb.list', id); } catch (_) {} };
   let me = '';
-  const top = signedIn => `<header class="top"><div class="brand">${gift}Wishbox</div>${signedIn ? `<button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button>` : ''}</header>`;
+  const top = signedIn => `<header class="top"><div class="brand">${logo}Wishbox</div>${signedIn ? `<button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button>` : ''}</header>`;
 
   /* Any admin call can find the session expired: go back to the login screen */
   async function call(method, url, body) {
