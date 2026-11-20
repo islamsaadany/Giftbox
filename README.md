@@ -4,6 +4,7 @@ Gift lists you share with a link. An admin gives each person a username and pass
 
 - **Users**: `/admin`. Each person signs in with the username and password the admin gave them and sees only their own lists: items, every reservation (name, mobile, how many, date), release per reservation.
 - **Collaborators**: a list's owner can add other users by username under **Collaborators**. They see the list and its reservations and can rename it, add, edit and delete its gifts, and release reservations. Only the owner deletes the list or chooses collaborators; a collaborator can leave.
+- **On a phone**: `/admin` can be added to the home screen (Share → Add to Home Screen on iPhone, menu → Install app / Add to Home screen on Android). It then opens full screen with its own icon. It still needs a connection: nothing works offline.
 - **Colour**: each user picks a colour theme (pink, light blue, teal, green, purple, orange) under **Colour**. Their guests see their lists in it too.
 - **Admins**: the accounts named in `ADMIN_USERS`, or only those listed in `ADMINS` when it is set. They get a **Users** page to create users, open any user's lists and change them like the owner can (gifts, reservations, name, collaborators, delete), set a new password for anyone, and delete users. There is no sign-up. Admins can also keep lists of their own.
 - **Guests**: `/l/<slug>`, a random 8-character link per list. The guest API never returns reservations, names or mobiles.
