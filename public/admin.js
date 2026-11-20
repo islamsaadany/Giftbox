@@ -76,11 +76,12 @@
   function setupPanel() {
     const box = $('lpanel'); panel = null;
     if (!box) return;
-    const h2 = box.querySelector('h2'), more = $('more'), add = $('add-item'), plus = $('add-plus');
+    const h2 = box.querySelector('h2'), more = $('more'), add = $('add-item');
     box.style.height = ''; $('lp-gap').style.height = ''; box.style.setProperty('--p', 0); box.classList.remove('m', 'slimmed');
-    const tall = box.offsetHeight, phone = getComputedStyle(plus).display !== 'none';
+    const tall = box.offsetHeight, phone = matchMedia('(max-width:599px)').matches;
     // Room for the name in the slim row, left of the buttons
-    const firstButton = phone ? box.clientWidth - 16 - 40 - 8 - 40 : more.offsetLeft;
+    // On a phone the actions sit in the bottom bar, so the name has the whole row
+    const firstButton = phone ? box.clientWidth - 16 : more.offsetLeft;
     box.style.setProperty('--rsv', (box.clientWidth - firstButton + 8) + 'px');
     // The name slides and shrinks into the slim row when it is one line and fits there; otherwise it fades to a shortened copy
     const oneLine = h2.offsetHeight < 40, fits = h2.scrollWidth * NAME_SHRINK <= firstButton - 8 - h2.offsetLeft;
@@ -156,8 +157,12 @@
         <div class="lp-filters" role="group" aria-label="Filter">${[['all', 'All'], ['available', 'Available'], ['taken', 'Reserved']].map(([f, t]) => `<button class="lp-chip" data-filter="${f}" aria-pressed="${filter === f}">${t} <b>${counts[f]}</b></button>`).join('')}</div>
         <div class="lp-links"><button class="lp-link lp-copy" id="copy-link">${linkIcon}Copy guest link</button><a class="lp-link lp-preview" href="/l/${esc(l.slug)}" target="_blank" rel="noopener">${eyeIcon}Preview</a></div>
         <div class="lp-slim" aria-hidden="true"><b>${esc(l.name)}</b></div>
-        <button class="lp-plus" id="add-plus" aria-label="Add item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
-      </section></div><div id="lp-gap"></div>`;
+      </section></div><div id="lp-gap"></div>
+      <nav class="bbar" aria-label="List actions">
+        <button class="bb-side" id="bb-copy">${linkIcon.replace(/"15"/g, '"20"')}<span>Copy link</span></button>
+        <button class="btn primary bb-add" id="bb-add">+ Add item</button>
+        <button class="bb-side" id="bb-more" aria-haspopup="dialog"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg><span>More</span></button>
+      </nav>`;
       if (!l.items.length) h += `<div class="empty"><h3>This list is empty</h3>Tap “Add item” to add the first gift: a name, price, shop link and photo.</div>`;
       else if (!shown.length) h += `<div class="empty">Nothing here for this filter.</div>`;
       else h += `<div class="grid">${shown.map(it => `<article class="card">${pic(it)}<div class="card-body">
@@ -182,8 +187,10 @@
     on('new-list', () => listForm());
     on('more', listMenu);
     on('add-item', () => itemForm());
-    on('add-plus', () => itemForm());
     on('copy-link', copyLink);
+    on('bb-copy', copyLink);
+    on('bb-add', () => itemForm());
+    on('bb-more', listMenu);
     app.querySelectorAll('[data-list]').forEach(b => (b.onclick = () => { pick(Number(b.dataset.list)); filter = 'all'; render(); }));
     app.querySelectorAll('[data-filter]').forEach(b => (b.onclick = () => { filter = b.dataset.filter; render(); }));
     app.querySelectorAll('[data-edit]').forEach(b => (b.onclick = () => itemForm(item(b.dataset.edit))));
