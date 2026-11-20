@@ -2,7 +2,7 @@
   const { gift, logo, esc, money, $, api, problem, open, close, busy } = WB;
   const slug = location.pathname.split('/')[2] || '';
   const app = $('app'), slim = $('slim');
-  let list = null, sort = 'default', watcher = null;
+  let list = null, sort = 'default';
 
   const priceLine = it => it.price === null ? '' : it.each ? `${money(it.price)} <span class="each">each</span>` : money(it.price);
   const pic = it => `<div class="pic">${it.photo ? `<img src="${esc(it.photo)}" alt="" loading="lazy">` : gift}${it.left > 1 ? `<span class="qty">${it.left} still needed</span>` : ''}</div>`;
@@ -88,17 +88,22 @@
 
   function showSlim(on) { slim.classList.toggle('on', on); slim.setAttribute('aria-hidden', String(!on)); }
 
-  /* Swap to the slim banner once the big one has scrolled up behind where the slim one sits */
-  function watch() {
-    if (watcher) watcher.disconnect();
+  /* Swap to the slim banner at the moment the big one has scrolled up behind where the slim one sits.
+     Measured on every scroll frame: an IntersectionObserver margin is ignored when the page is shown inside
+     another site's frame, which left a gap between the banner and the pinned sort buttons. */
+  let slimH = 0, queued = false;
+  function check() {
+    queued = false;
     const banner = $('banner');
-    const h = slim.offsetHeight;
-    document.documentElement.style.setProperty('--slim-h', h + 'px');
-    showSlim(false);
-    if (!banner || !('IntersectionObserver' in window)) return;
-    watcher = new IntersectionObserver(([e]) => showSlim(!e.isIntersecting && e.boundingClientRect.top < h), { rootMargin: `-${h}px 0px 0px 0px` });
-    watcher.observe(banner);
+    showSlim(!!banner && banner.getBoundingClientRect().bottom <= slimH + 0.5);
   }
+  function watch() {
+    slimH = slim.offsetHeight;
+    document.documentElement.style.setProperty('--slim-h', slimH + 'px');
+    check();
+  }
+  const onMove = () => { if (!queued) { queued = true; requestAnimationFrame(check); } };
+  addEventListener('scroll', onMove, { passive: true });
   addEventListener('resize', () => { if (list) watch(); });
 
   function pickForm(it) {
