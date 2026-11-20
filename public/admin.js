@@ -72,7 +72,8 @@
     if (!l) h += viewing ? `<div class="empty"><h3>No lists yet</h3>${esc(viewing.name)} hasn't created a list.</div>` : `<div class="empty"><h3>No lists yet</h3>Create your first list, then add the gifts you'd like.</div>`;
     else {
       const taken = l.items.filter(i => leftOf(i) === 0).length, avail = l.items.length - taken;
-      const shown = l.items.filter(i => filter === 'all' || (filter === 'taken' ? resN(i) > 0 : leftOf(i) > 0));
+      const shown = l.items.filter(i => filter === 'all' || (filter === 'taken' ? resN(i) > 0 : leftOf(i) > 0))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })); // A–Z, like the guest page
       h += `<section class="panel">
         <div class="panel-head"><div><div class="eyebrow">Gift list</div><h2>${esc(l.name)}</h2></div>
           ${viewing ? '' : '<div class="share"><button class="btn ghost" id="edit-list">Rename</button><button class="btn primary" id="add-item">+ Add item</button></div>'}</div>
