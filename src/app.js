@@ -210,9 +210,14 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '' }) {
   });
 
   /* Everything below is limited to lists the signed-in user owns or was added to as a collaborator.
-     Collaborators can change the list and its items; only the owner deletes it or chooses collaborators. */
+     Collaborators can change the list and its items; only the owner deletes it or chooses collaborators.
+     Admins can do all of it on every user's lists. */
   // SQL condition on lists row "l": the user in parameter $n owns it or collaborates on it
   const can = n => `(l.user_id = $${n} OR EXISTS (SELECT 1 FROM list_collaborators c WHERE c.list_id = l.id AND c.user_id = $${n}))`;
+  // may: lists the signed-in user can change (owner, collaborator or admin). owns: owner or admin.
+  const all = n => `$${n}::int IS NOT NULL`; // true, and keeps the parameter in use
+  const may = (n, req) => (req.user.admin ? all(n) : can(n));
+  const owns = (n, req) => (req.user.admin ? all(n) : `l.user_id = $${n}`);
   const admin = express.Router();
   admin.use(async (req, res, next) => {
     res.set('Cache-Control', 'no-store');
@@ -265,28 +270,29 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '' }) {
 
   admin.patch('/lists/:id', async (req, res) => {
     const name = text(req.body?.name, 60, 'bad_name', true), note = text(req.body?.note, 160, 'bad_note');
-    const r = await db.query(`UPDATE lists l SET name = $1, note = $2 WHERE l.id = $3 AND ${can(4)}`, [name, note, idParam(req.params.id), req.user.id]);
+    const r = await db.query(`UPDATE lists l SET name = $1, note = $2 WHERE l.id = $3 AND ${may(4, req)}`, [name, note, idParam(req.params.id), req.user.id]);
     if (!r.count) throw new HttpError(404, 'not_found');
     res.json({ ok: true });
   });
 
   admin.delete('/lists/:id', async (req, res) => {
     const id = idParam(req.params.id);
-    if (!(await one('SELECT 1 AS ok FROM lists WHERE id = $1 AND user_id = $2', [id, req.user.id]))) throw new HttpError(404, 'not_found');
+    if (!(await one(`SELECT 1 AS ok FROM lists l WHERE l.id = $1 AND ${owns(2, req)}`, [id, req.user.id]))) throw new HttpError(404, 'not_found');
     const pics = await rows('SELECT photo FROM items WHERE list_id = $1 AND photo IS NOT NULL', [id]);
-    const r = await db.query('DELETE FROM lists WHERE id = $1 AND user_id = $2', [id, req.user.id]);
+    const r = await db.query(`DELETE FROM lists l WHERE l.id = $1 AND ${owns(2, req)}`, [id, req.user.id]);
     if (!r.count) throw new HttpError(404, 'not_found');
     await Promise.all(pics.map(p => dropPhoto(p.photo)));
     res.json({ ok: true });
   });
 
-  // The owner adds another user to the list by username
+  // The owner (or an admin) adds another user to the list by username
   admin.post('/lists/:id/collaborators', async (req, res) => {
     const listId = idParam(req.params.id);
-    if (!(await one('SELECT 1 AS ok FROM lists WHERE id = $1 AND user_id = $2', [listId, req.user.id]))) throw new HttpError(404, 'not_found');
+    const list = await one(`SELECT l.user_id FROM lists l WHERE l.id = $1 AND ${owns(2, req)}`, [listId, req.user.id]);
+    if (!list) throw new HttpError(404, 'not_found');
     const u = await one('SELECT id, name FROM users WHERE name_key = $1', [cleanName(req.body?.name).toLowerCase()]);
     if (!u) throw new HttpError(404, 'no_such_user');
-    if (u.id === req.user.id) throw bad('is_owner');
+    if (u.id === list.user_id) throw bad('is_owner');
     await db.query('INSERT INTO list_collaborators (list_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [listId, u.id]);
     res.status(201).json({ id: u.id, name: u.name });
   });
@@ -295,14 +301,14 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '' }) {
   admin.delete('/lists/:id/collaborators/:userId', async (req, res) => {
     const listId = idParam(req.params.id), userId = idParam(req.params.userId);
     const r = await db.query(`DELETE FROM list_collaborators c USING lists l WHERE c.list_id = $1 AND c.user_id = $2 AND l.id = c.list_id
-                              AND (l.user_id = $3 OR c.user_id = $3)`, [listId, userId, req.user.id]);
+                              AND (${owns(3, req)} OR c.user_id = $3)`, [listId, userId, req.user.id]);
     if (!r.count) throw new HttpError(404, 'not_found');
     res.json({ ok: true });
   });
 
   admin.post('/lists/:id/items', async (req, res) => {
     const listId = idParam(req.params.id);
-    if (!(await one(`SELECT 1 AS ok FROM lists l WHERE l.id = $1 AND ${can(2)}`, [listId, req.user.id]))) throw new HttpError(404, 'not_found');
+    if (!(await one(`SELECT 1 AS ok FROM lists l WHERE l.id = $1 AND ${may(2, req)}`, [listId, req.user.id]))) throw new HttpError(404, 'not_found');
     const f = itemFields(req.body || {}, { partial: false });
     const photo = req.body?.photo ? await savePhoto(req.body.photo) : null;
     try {
@@ -320,7 +326,7 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '' }) {
     let oldPhoto;
     try {
       await db.tx(async q => {
-        const it = (await q(`SELECT i.photo FROM items i JOIN lists l ON l.id = i.list_id WHERE i.id = $1 AND ${can(2)} FOR UPDATE OF i`, [id, req.user.id])).rows[0];
+        const it = (await q(`SELECT i.photo FROM items i JOIN lists l ON l.id = i.list_id WHERE i.id = $1 AND ${may(2, req)} FOR UPDATE OF i`, [id, req.user.id])).rows[0];
         if (!it) throw new HttpError(404, 'not_found');
         const reserved = (await q('SELECT COALESCE(SUM(count), 0)::int AS n FROM reservations WHERE item_id = $1', [id])).rows[0].n;
         if (f.quantity !== undefined && f.quantity < reserved) throw new HttpError(409, 'qty_below_reserved', { reserved });
@@ -334,14 +340,14 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '' }) {
   });
 
   admin.delete('/items/:id', async (req, res) => {
-    const it = await one(`DELETE FROM items i USING lists l WHERE i.id = $1 AND l.id = i.list_id AND ${can(2)} RETURNING i.photo`, [idParam(req.params.id), req.user.id]);
+    const it = await one(`DELETE FROM items i USING lists l WHERE i.id = $1 AND l.id = i.list_id AND ${may(2, req)} RETURNING i.photo`, [idParam(req.params.id), req.user.id]);
     if (!it) throw new HttpError(404, 'not_found');
     await dropPhoto(it.photo);
     res.json({ ok: true });
   });
 
   admin.delete('/reservations/:id', async (req, res) => {
-    const r = await db.query(`DELETE FROM reservations r USING items i, lists l WHERE r.id = $1 AND i.id = r.item_id AND l.id = i.list_id AND ${can(2)}`, [idParam(req.params.id), req.user.id]);
+    const r = await db.query(`DELETE FROM reservations r USING items i, lists l WHERE r.id = $1 AND i.id = r.item_id AND l.id = i.list_id AND ${may(2, req)}`, [idParam(req.params.id), req.user.id]);
     if (!r.count) throw new HttpError(404, 'not_found');
     res.json({ ok: true });
   });
@@ -366,7 +372,7 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '' }) {
     res.status(201).json({ id: u.id });
   });
 
-  // An admin can look at a user's lists (view only: every change stays with the owner)
+  // An admin opens a user's lists; the list, item and reservation calls above then let them change those too
   users.get('/:id/lists', async (req, res) => {
     const u = await one('SELECT id, name FROM users WHERE id = $1', [idParam(req.params.id)]);
     if (!u) throw new HttpError(404, 'not_found');

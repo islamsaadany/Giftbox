@@ -8,6 +8,8 @@
   const leftOf = it => Math.max(0, it.qty - resN(it));
   const priceLine = it => it.price === null ? '' : it.qty > 1 ? `${money(it.price)} <span class="each">each</span>` : money(it.price);
   const cur = () => lists.find(l => l.id === listId);
+  // Whether everything is allowed on this list (delete it, choose collaborators): its owner, or an admin working in a user's lists
+  const full = l => l.mine || !!viewing;
   // The list's collaborators by name, without the signed-in user
   const others = l => l.collaborators.map(c => c.name).filter(n => viewing || n !== me);
   // The server names the public address, so links copied from a preview deployment still work for guests
@@ -15,7 +17,7 @@
   const guestLink = l => (publicUrl || location.origin) + '/l/' + l.slug;
   const pick = id => { listId = id; try { sessionStorage.setItem('wb.list', id); } catch (_) {} };
   let me = '', theme = 'pink', isAdmin = false, view = 'lists', users = [];
-  let viewing = null; // admin looking at another user's lists (view only): { id, name }
+  let viewing = null; // admin working in another user's lists: { id, name }
   const top = signedIn => `<header class="top"><div class="brand">${logo}Wishbox</div>${signedIn ? `<div class="share">${isAdmin ? `<button class="link-btn" id="nav">${view === 'users' ? 'My lists' : viewing ? 'Back to users' : 'Users'}</button>` : ''}<button class="link-btn" id="theme">Colour</button><button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button></div>` : ''}</header>`;
 
   /* Any admin call can find the session expired: go back to the login screen */
@@ -72,7 +74,7 @@
   function render() {
     const l = cur();
     let h = top(true) + `<nav class="lists" aria-label="Your lists">${lists.map(x => `<button class="chip" data-list="${x.id}" aria-current="${x.id === listId}">${esc(x.name)}</button>`).join('')}${viewing ? '' : '<button class="chip" id="new-list">+ New list</button>'}</nav>`;
-    if (viewing) h = top(true) + `<p class="viewing">Viewing <b>${esc(viewing.name)}</b>’s lists. Only they can change them.</p>` + h.slice(top(true).length);
+    if (viewing) h = top(true) + `<p class="viewing">Viewing <b>${esc(viewing.name)}</b>’s lists. Changes you make here change their lists.</p>` + h.slice(top(true).length);
     if (!l) h += viewing ? `<div class="empty"><h3>No lists yet</h3>${esc(viewing.name)} hasn't created a list.</div>` : `<div class="empty"><h3>No lists yet</h3>Create your first list, then add the gifts you'd like.</div>`;
     else {
       const taken = l.items.filter(i => leftOf(i) === 0).length, avail = l.items.length - taken;
@@ -80,19 +82,19 @@
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })); // A–Z, like the guest page
       h += `<section class="panel">
         <div class="panel-head"><div><div class="eyebrow">Gift list${l.mine ? '' : ' · shared by ' + esc(l.owner)}</div><h2>${esc(l.name)}</h2>${others(l).length ? `<p class="hint">${l.mine || viewing ? 'Shared with' : 'Also shared with'} ${esc(others(l).join(', '))}</p>` : ''}</div>
-          ${viewing ? '' : '<div class="share"><button class="btn ghost" id="edit-list">Rename</button><button class="btn primary" id="add-item">+ Add item</button></div>'}</div>
+          <div class="share"><button class="btn ghost" id="edit-list">Rename</button><button class="btn primary" id="add-item">+ Add item</button></div></div>
         <div class="stats"><span><b>${l.items.length}</b>items</span><span><b>${avail}</b>available</span><span><b>${taken}</b>reserved</span></div>
-        <div class="share"><button class="btn" id="copy-link">Copy guest link</button><a class="btn ghost" href="/l/${esc(l.slug)}" target="_blank" rel="noopener">Preview as guest</a>${viewing ? '' : l.mine ? '<button class="btn ghost" id="collab">Collaborators</button>' : '<button class="btn ghost" id="leave">Leave list</button>'}</div>
+        <div class="share"><button class="btn" id="copy-link">Copy guest link</button><a class="btn ghost" href="/l/${esc(l.slug)}" target="_blank" rel="noopener">Preview as guest</a>${full(l) ? '<button class="btn ghost" id="collab">Collaborators</button>' : '<button class="btn ghost" id="leave">Leave list</button>'}</div>
         <div class="filters" role="group" aria-label="Filter">${['all', 'available', 'taken'].map(f => `<button class="chip" data-filter="${f}" aria-current="${filter === f}">${f === 'all' ? 'All' : f === 'available' ? 'Available' : 'Reserved'}</button>`).join('')}</div>
       </section>`;
-      if (!l.items.length) h += viewing ? `<div class="empty"><h3>This list is empty</h3>No gifts have been added yet.</div>` : `<div class="empty"><h3>This list is empty</h3>Tap “Add item” to add the first gift: a name, price, shop link and photo.</div>`;
+      if (!l.items.length) h += `<div class="empty"><h3>This list is empty</h3>Tap “Add item” to add the first gift: a name, price, shop link and photo.</div>`;
       else if (!shown.length) h += `<div class="empty">Nothing here for this filter.</div>`;
       else h += `<div class="grid">${shown.map(it => `<article class="card">${pic(it)}<div class="card-body">
         <div class="meta">${statusPill(it)}</div>
         <h3>${esc(it.name)}</h3>
         <div class="price">${priceLine(it)}</div>
-        ${it.reservations.length ? `<div class="who-list">${it.reservations.map(r => `<div class="who"><div><strong>${esc(r.name)}${it.qty > 1 ? ` · ×${r.count}` : ''}</strong><span class="num">${esc(r.mobile)}</span><span>${new Date(r.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></div>${viewing ? '' : `<button class="rel" data-release="${it.id}|${r.id}">Release</button>`}</div>`).join('')}</div>` : ''}
-        <div class="row">${viewing ? '' : `<button class="btn primary" data-edit="${it.id}">Edit</button>`}${it.link ? `<a class="shoplink" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">View in shop</a>` : '<span class="shoplink none" aria-hidden="true">&nbsp;</span>'}</div>
+        ${it.reservations.length ? `<div class="who-list">${it.reservations.map(r => `<div class="who"><div><strong>${esc(r.name)}${it.qty > 1 ? ` · ×${r.count}` : ''}</strong><span class="num">${esc(r.mobile)}</span><span>${new Date(r.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></div><button class="rel" data-release="${it.id}|${r.id}">Release</button></div>`).join('')}</div>` : ''}
+        <div class="row"><button class="btn primary" data-edit="${it.id}">Edit</button>${it.link ? `<a class="shoplink" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">View in shop</a>` : '<span class="shoplink none" aria-hidden="true">&nbsp;</span>'}</div>
       </div></article>`).join('')}</div>`;
     }
     app.innerHTML = h;
@@ -149,7 +151,7 @@
   function renderUsers() {
     app.innerHTML = top(true) + `<section class="panel">
       <div class="panel-head"><div><div class="eyebrow">Admin</div><h2>Users</h2></div><button class="btn primary" id="add-user">+ Add user</button></div>
-      <p class="hint">Create a username and password for each person, then send them both. Each person sees only their own lists and the ones shared with them; you can look at anyone’s with “Lists”.</p>
+      <p class="hint">Create a username and password for each person, then send them both. Each person sees only their own lists and the ones shared with them; you can open and edit anyone’s with “Lists”.</p>
       <div class="user-list">${users.map(u => `<div class="user"><div><strong>${esc(u.name)}</strong>${u.admin ? ' <span class="pill ok">Admin</span>' : ''}<span>${u.lists} ${u.lists === 1 ? 'list' : 'lists'}</span></div><div class="share"><button class="btn" data-lists="${u.id}">Lists</button><button class="btn" data-user="${u.id}">Manage</button></div></div>`).join('')}</div>
     </section>`;
     bind();
@@ -213,7 +215,7 @@
       <div class="field"><label for="ln">List name</label><input id="ln" maxlength="60" placeholder="e.g. Birthday 2027" value="${esc(l?.name || '')}"></div>
       <div class="field"><label for="lnote">Message to guests <i>(optional)</i></label><input id="lnote" maxlength="160" value="${esc(l?.note || '')}"></div>
       <div class="err" id="le" role="alert"></div>
-      <div class="actions">${l?.mine ? '<button type="button" class="btn danger left" id="ldel">Delete list</button>' : ''}<button type="button" class="btn ghost" data-close>Cancel</button><button class="btn primary" id="lgo">${l ? 'Save' : 'Create list'}</button></div>
+      <div class="actions">${l && full(l) ? '<button type="button" class="btn danger left" id="ldel">Delete list</button>' : ''}<button type="button" class="btn ghost" data-close>Cancel</button><button class="btn primary" id="lgo">${l ? 'Save' : 'Create list'}</button></div>
     </form>`, () => {
       $('lf').onsubmit = e => {
         e.preventDefault();
@@ -236,7 +238,7 @@
   /* The owner chooses who else can edit the current list, by username */
   function collabForm() {
     const l = cur();
-    open(`<h2>Collaborators</h2><p>People you add can see “${esc(l.name)}”, its reservations, and add or edit its gifts. Only you can delete the list.</p>
+    open(`<h2>Collaborators</h2><p>People you add can see “${esc(l.name)}”, its reservations, and add or edit its gifts. Only ${viewing ? 'the owner or an admin' : 'you'} can delete the list.</p>
       ${l.collaborators.length ? `<div class="user-list">${l.collaborators.map(c => `<div class="user"><div><strong>${esc(c.name)}</strong></div><button type="button" class="btn" data-remove="${c.id}">Remove</button></div>`).join('')}</div>` : ''}
       <form id="cf2" novalidate>
         <div class="field"><label for="cn">Add by username</label><input id="cn" maxlength="30" autocomplete="off" autocapitalize="words"></div>
@@ -253,7 +255,7 @@
           try { const r = await call('POST', `/api/admin/lists/${l.id}/collaborators`, { name }); await again(r.name + ' can now edit this list'); }
           catch (x) {
             if ($('ce')) $('ce').textContent = x.code === 'no_such_user' ? 'There’s no user with that username.'
-              : x.code === 'is_owner' ? 'That’s you: it’s already your list.' : problem(x);
+              : x.code === 'is_owner' ? 'That’s the owner: it’s already their list.' : problem(x);
           }
         });
       };
