@@ -13,8 +13,8 @@ window.WB = (function () {
     return t;
   }
   try { setTheme(localStorage.getItem(themeKey)); } catch (_) {}
-  // The round "open in shop" button on a card; nothing when the item has no shop link
-  const shopBtn = it => it.link ? `<a class="shopbtn" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer" aria-label="View ${esc(it.name)} in shop" title="View in shop"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>` : '';
+  // The round "open in shop" button on a card (a link icon); nothing when the item has no shop link
+  const shopBtn = it => it.link ? `<a class="shopbtn" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer" aria-label="View ${esc(it.name)} in shop" title="View in shop"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></a>` : '';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const money = n => (n || n === 0 ? Number(n).toLocaleString('en-EG') + ' EGP' : '');
   const $ = id => document.getElementById(id);
