@@ -6,17 +6,39 @@ const path = require('node:path');
 
 const randomName = () => crypto.randomBytes(12).toString('hex') + '.jpg';
 
+/* A Blob store is created as either public or private, and an upload must match it.
+   We try public first and fall back to private, remembering what worked.
+   Public photos are loaded straight from Blob; private ones are served by this app at /photos/<name>. */
 function blobPhotos(token) {
-  const { put, del } = require('@vercel/blob');
+  const { put, del, get } = require('@vercel/blob');
+  let mode = null; // 'public' | 'private', once known
+  const upload = (name, buf, access) => put('photos/' + name, buf, {
+    access, contentType: 'image/jpeg', addRandomSuffix: false, cacheControlMaxAge: 31536000, token,
+  });
   return {
     async save(buf) {
-      const r = await put('photos/' + randomName(), buf, {
-        access: 'public', contentType: 'image/jpeg', addRandomSuffix: false, cacheControlMaxAge: 31536000, token,
-      });
-      return r.url;
+      const name = randomName();
+      let firstError;
+      for (const access of mode ? [mode] : ['public', 'private']) {
+        try {
+          const r = await upload(name, buf, access);
+          mode = access;
+          return access === 'public' ? r.url : 'private:' + name;
+        } catch (e) { firstError ||= e; }
+      }
+      throw firstError;
     },
-    async remove(ref) { if (ref && /^https:\/\//.test(ref)) await del(ref, { token }).catch(e => console.error('photo delete failed', e.message)); },
-    url: ref => ref || null,
+    async remove(ref) {
+      if (!ref) return;
+      const target = ref.startsWith('private:') ? 'photos/' + ref.slice(8) : ref;
+      await del(target, { token }).catch(e => console.error('photo delete failed', e.message));
+    },
+    url: ref => (!ref ? null : ref.startsWith('private:') ? '/photos/' + ref.slice(8) : ref),
+    // For private stores: returns { stream, size } or null
+    async read(name) {
+      const r = await get('photos/' + name, { access: 'private', token });
+      return r && r.statusCode === 200 ? { stream: r.stream, size: r.blob.size } : null;
+    },
   };
 }
 

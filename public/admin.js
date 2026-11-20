@@ -205,6 +205,7 @@
             if (!$('ie')) return;
             $('ie').textContent = x.code === 'qty_below_reserved' ? x.data.reserved + ' pieces are already reserved, so the quantity can’t be lower than that.'
               : x.code === 'photo_too_big' || x.code === 'bad_photo' ? 'That picture couldn’t be saved. Try another one.'
+              : x.code === 'photo_store_failed' ? 'The picture storage refused the upload: ' + (x.data.detail || 'unknown reason')
               : x.code === 'bad_link' ? 'The shop link should start with https://'
               : problem(x);
           }

@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('node:crypto');
 const path = require('node:path');
+const { Readable } = require('node:stream');
 
 const PUBLIC = path.join(__dirname, '..', 'public');
 const COOKIE = 'wb_admin';
@@ -73,7 +74,12 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
     const buf = Buffer.from(m[1], 'base64');
     if (buf.length > MAX_PHOTO_BYTES) throw bad('photo_too_big');
     if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) throw bad('bad_photo');
-    return photos.save(buf);
+    try { return await photos.save(buf); }
+    catch (e) {
+      // Only admins reach this, so it's safe (and useful) to say what the photo storage answered
+      console.error('photo upload failed', e);
+      throw new HttpError(502, 'photo_store_failed', { detail: String(e.message || e).slice(0, 300) });
+    }
   }
   const dropPhoto = ref => (ref ? photos.remove(ref).catch(e => console.error('photo delete failed', e.message)) : undefined);
 
@@ -314,6 +320,13 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
   // The main address goes to the admin sign-in. (No public/index.html, so Vercel doesn't serve a static page here.)
   app.get('/', (req, res) => res.redirect(302, '/admin'));
   app.get('/healthz', (req, res) => res.type('text').send('ok'));
+  if (photos.read) app.get('/photos/:name', async (req, res) => {
+    const f = /^[a-f0-9]{24}\.jpg$/.test(req.params.name) && (await photos.read(req.params.name));
+    if (!f) return res.status(404).end();
+    res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable' });
+    if (f.size) res.set('Content-Length', String(f.size));
+    Readable.fromWeb(f.stream).on('error', () => res.destroy()).pipe(res);
+  });
   if (photos.dir) app.use('/photos', express.static(photos.dir, { index: false, immutable: true, maxAge: '365d', fallthrough: false }));
   app.use(express.static(PUBLIC, { index: false, extensions: false, setHeaders: res => res.set('Cache-Control', 'no-cache') }));
   app.use((req, res) => res.status(404).sendFile(path.join(PUBLIC, 'notfound.html')));
