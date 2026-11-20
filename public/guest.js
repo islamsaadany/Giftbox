@@ -1,19 +1,64 @@
 (function () {
   const { gift, logo, esc, money, $, api, problem, open, close, busy } = WB;
   const slug = location.pathname.split('/')[2] || '';
-  const app = $('app'), slim = $('slim');
+  const app = $('app'), hdr = $('hdr');
   let list = null, sort = 'default';
 
   const priceLine = it => it.price === null ? '' : it.each ? `${money(it.price)} <span class="each">each</span>` : money(it.price);
   const pic = it => `<div class="pic">${it.photo ? `<img src="${esc(it.photo)}" alt="" loading="lazy">` : gift}${it.left > 1 ? `<span class="qty">${it.left} still needed</span>` : ''}</div>`;
   // Always takes a line, so Reserve buttons line up across a row whether or not an item has a shop link
   const shop = it => it.link ? `<a class="shoplink" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">View in shop</a>` : '<span class="shoplink none" aria-hidden="true">&nbsp;</span>';
-  const mark = `<div class="mark">${logo}Wishbox</div>`;
+
+  /* The header is one pink box fixed at the top. It starts tall (icon, "Wishbox", list name, message) and is
+     squeezed by exactly as much as the page has been scrolled, until it is the slim bar (icon, name, gifts left).
+     A spacer in the page keeps the room the tall header takes, so nothing else moves while it changes. */
+  const SLIM = 50; // height of the pink box when slim
+  let tall = SLIM, padTop = 0, morph = false, queued = false;
+
+  function header(big, slim) {
+    morph = !!slim;
+    hdr.innerHTML = `<div class="hbox" id="hbox"><span class="hicon">${logo}</span>
+      <div class="hbig" id="hbig"><div class="mark">Wishbox</div>${big}</div>
+      ${slim ? `<div class="hslim" aria-hidden="true">${slim}</div>` : ''}</div>`;
+  }
+  /* When the list name fits on one line, the big name itself shrinks and slides into the slim bar (class "m").
+     A name long enough to wrap, or too wide for the slim bar next to the gift count, fades between the two instead. */
+  const SHRINK = 19 / 30; // slim name size over big name size
+  function fitName() {
+    const box = $('hbox'), h1 = box.querySelector('.hbig h1'), pill = box.querySelector('.hslim .n');
+    if (!h1) return box.classList.remove('m');
+    box.classList.add('m');
+    const w = h1.scrollWidth, room = box.clientWidth;
+    const slimRoom = room - 56 - 12 - (pill ? pill.offsetWidth + 10 : 0);
+    if (w > room - 36 || w * SHRINK > slimRoom) box.classList.remove('m');
+  }
+  function measure() {
+    const big = $('hbig'); if (!big) return;
+    fitName();
+    tall = Math.max(big.offsetHeight, SLIM);
+    padTop = parseFloat(getComputedStyle(hdr).paddingTop) || 0;
+    const space = $('hspace'); if (space) space.style.height = (padTop + tall) + 'px';
+    document.documentElement.style.setProperty('--slim-h', (padTop + SLIM) + 'px');
+    squeeze();
+  }
+  function squeeze() {
+    queued = false;
+    const box = $('hbox');
+    // While a form is open the page is held still (see lock() in ui.js): leave the header as it is
+    if (!box || document.body.classList.contains('locked')) return;
+    const range = tall - SLIM;
+    const p = morph && range > 0 ? Math.min(1, Math.max(0, scrollY) / range) : 0;
+    box.style.height = (tall - range * p) + 'px';
+    box.style.setProperty('--p', p.toFixed(3));
+  }
+  addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(squeeze); } }, { passive: true });
+  addEventListener('resize', measure);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
 
   function message(html) {
-    showSlim(false);
-    slim.innerHTML = '';
-    app.innerHTML = `<section class="banner">${mark}</section>${html}`;
+    header('', '');
+    app.innerHTML = `<div id="hspace"></div>${html}`;
+    measure();
   }
 
   async function load() {
@@ -54,9 +99,9 @@
 
   function render() {
     const n = list.items.length;
-    // The big banner scrolls away; this slim one takes its place at the top
-    slim.innerHTML = `<div class="slim-in">${logo}<div class="t"><small>Wishbox</small><b>${esc(list.name)}</b></div>${n ? `<span class="n">${n} ${n === 1 ? 'gift' : 'gifts'} left</span>` : ''}</div>`;
-    let h = `<section class="banner" id="banner">${mark}<div><h1>${esc(list.name)}</h1>${list.note ? `<p>${esc(list.note)}</p>` : ''}</div></section>`;
+    header(`<div><h1>${esc(list.name)}</h1>${list.note ? `<p>${esc(list.note)}</p>` : ''}</div>`,
+      `<div class="t"><small>Wishbox</small><b>${esc(list.name)}</b></div>${n ? `<span class="n">${n} ${n === 1 ? 'gift' : 'gifts'} left</span>` : ''}`);
+    let h = '<div id="hspace"></div>';
     if (!n) {
       h += list.total
         ? `<div class="empty"><h3>Every gift has been reserved</h3>Thank you all. Nothing left to pick right now.</div>`
@@ -79,33 +124,13 @@
         cards();
         grid.style.minHeight = '';
         // If the buttons are pinned, bring the first gifts of the new order up under them
-        const under = slim.offsetHeight + bar.offsetHeight;
+        const under = padTop + SLIM + bar.offsetHeight;
         const gridTop = grid.getBoundingClientRect().top;
         if (gridTop < under) scrollTo(0, scrollY + gridTop - under);
       }));
     }
-    watch();
+    measure();
   }
-
-  function showSlim(on) { slim.classList.toggle('on', on); slim.setAttribute('aria-hidden', String(!on)); }
-
-  /* Swap to the slim banner at the moment the big one has scrolled up behind where the slim one sits.
-     Measured on every scroll frame: an IntersectionObserver margin is ignored when the page is shown inside
-     another site's frame, which left a gap between the banner and the pinned sort buttons. */
-  let slimH = 0, queued = false;
-  function check() {
-    queued = false;
-    const banner = $('banner');
-    showSlim(!!banner && banner.getBoundingClientRect().bottom <= slimH + 0.5);
-  }
-  function watch() {
-    slimH = slim.offsetHeight;
-    document.documentElement.style.setProperty('--slim-h', slimH + 'px');
-    check();
-  }
-  const onMove = () => { if (!queued) { queued = true; requestAnimationFrame(check); } };
-  addEventListener('scroll', onMove, { passive: true });
-  addEventListener('resize', () => { if (list) watch(); });
 
   function pickForm(it) {
     const lf = it.left, u = it.price; let c = 1;
