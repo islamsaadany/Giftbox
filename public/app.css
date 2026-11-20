@@ -209,12 +209,12 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .card .price{font-family:var(--display);font-size:17px;font-weight:700}
 .each{font-family:var(--body)}
 .qty{top:auto;right:auto;left:6px;bottom:6px;background:var(--surface);color:var(--ink);font-family:var(--body);font-size:11px;font-weight:600;padding:5px 8px;box-shadow:none}
-.row{gap:0;padding-top:4px}
-.row .btn{border-radius:999px;font-size:13px;padding:9px 8px}
+/* Reserve (or Edit) with the shop link as a small round button beside it */
+.row{flex-direction:row;gap:6px;padding:4px 0 2px}
+.row .btn{flex:1;min-width:0;border-radius:999px;font-size:13px;padding:9px 8px}
+.shopbtn{flex:none;width:38px;display:grid;place-items:center;border-radius:999px;background:var(--accent-soft);color:var(--accent-deep)}
 .card .meta{margin-bottom:2px}
 .who-list{margin:4px 0 2px}
-.shoplink{display:block;font-size:12px;font-weight:600;text-align:center;padding:9px 0 5px;color:var(--accent-deep);text-decoration:none}
-.shoplink.none{visibility:hidden}
 
 /* reserve counter */
 .step-row{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--accent-soft);border-radius:12px;padding:12px}
