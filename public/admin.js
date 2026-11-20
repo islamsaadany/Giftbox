@@ -80,7 +80,7 @@
         <h3>${esc(it.name)}</h3>
         <div class="price">${priceLine(it)}</div>
         ${it.reservations.length ? `<div class="who-list">${it.reservations.map(r => `<div class="who"><div><strong>${esc(r.name)}${it.qty > 1 ? ` · ×${r.count}` : ''}</strong><span class="num">${esc(r.mobile)}</span><span>${new Date(r.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></div><button class="rel" data-release="${it.id}|${r.id}">Release</button></div>`).join('')}</div>` : ''}
-        <div class="row"><button class="btn soft" data-edit="${it.id}">Edit</button>${it.link ? `<a class="shoplink" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">View in shop</a>` : '<span class="shoplink none" aria-hidden="true">&nbsp;</span>'}</div>
+        <div class="row"><button class="btn primary" data-edit="${it.id}">Edit</button>${it.link ? `<a class="shoplink" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">View in shop</a>` : '<span class="shoplink none" aria-hidden="true">&nbsp;</span>'}</div>
       </div></article>`).join('')}</div>`;
     }
     app.innerHTML = h;
