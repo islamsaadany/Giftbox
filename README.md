@@ -36,6 +36,7 @@ Then open http://localhost:3000/admin.
 | `DATABASE_URL` | Postgres connection string (`POSTGRES_URL` also works) | embedded database in `DATA_DIR` |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob token for pictures | pictures saved in `DATA_DIR` |
 | `DATA_DIR` | Folder for local data | `./data` |
+| `PUBLIC_URL` | Address guests open, used for the copied guest link, e.g. `https://gifts.example.com` | on Vercel the production domain, otherwise the address the admin is on |
 | `PORT` | Port to listen on | `3000` |
 
 ## Data

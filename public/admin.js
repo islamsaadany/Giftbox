@@ -8,7 +8,9 @@
   const leftOf = it => Math.max(0, it.qty - resN(it));
   const priceLine = it => it.price === null ? '' : it.qty > 1 ? `${money(it.price)} <span class="each">each</span>` : money(it.price);
   const cur = () => lists.find(l => l.id === listId);
-  const guestLink = l => location.origin + '/l/' + l.slug;
+  // The server names the public address, so links copied from a preview deployment still work for guests
+  let publicUrl = '';
+  const guestLink = l => (publicUrl || location.origin) + '/l/' + l.slug;
   const pick = id => { listId = id; try { sessionStorage.setItem('wb.list', id); } catch (_) {} };
   let me = '';
   const top = signedIn => `<header class="top"><div class="brand">${logo}Wishbox</div>${signedIn ? `<button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button>` : ''}</header>`;
@@ -23,7 +25,7 @@
     try {
       const r = await api('GET', '/api/admin/me');
       if (!r.admin) return login();
-      me = r.name;
+      me = r.name; publicUrl = r.publicUrl || '';
       await refresh();
     } catch (e) { app.innerHTML = top(false) + `<div class="empty"><h3>Couldn't load</h3>${esc(problem(e))}</div>`; }
   }
@@ -38,7 +40,7 @@
     $('lg').onsubmit = e => {
       e.preventDefault();
       busy($('lgo'), async () => {
-        try { me = (await api('POST', '/api/admin/login', { name: $('un').value, password: $('pw').value })).name; await refresh(); }
+        try { const r = await api('POST', '/api/admin/login', { name: $('un').value, password: $('pw').value }); me = r.name; publicUrl = r.publicUrl || ''; await refresh(); }
         catch (x) { const el = $('lge'); if (el) el.textContent = x.code === 'wrong_login' ? 'That name or password isn’t right.' : problem(x); }
       });
     };

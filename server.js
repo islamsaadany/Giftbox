@@ -17,6 +17,6 @@ const db = openDb({ url, dir: path.join(dataDir, 'pg') });
 const photos = openPhotos({ blobToken: process.env.BLOB_READ_WRITE_TOKEN, dir: path.join(dataDir, 'photos') });
 const port = Number(process.env.PORT) || 3000;
 
-const server = createApp({ db, photos, admins }).listen(port, () =>
+const server = createApp({ db, photos, admins, publicUrl: process.env.PUBLIC_URL }).listen(port, () =>
   console.log(`Wishbox on http://localhost:${port}  (admin: /admin, database: ${url ? 'Postgres' : 'local, in ' + dataDir})`));
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => server.close(async () => { await db.close().catch(() => {}); process.exit(0); }));

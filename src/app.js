@@ -34,7 +34,9 @@ function limiter(max, windowMs) {
 }
 
 /* db: from ./db (query/tx/ready). photos: from ./photos (save/remove/url). */
-function createApp({ db, photos, admins, trustProxy = 1 }) {
+function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '' }) {
+  // Address guests should use; empty means "whatever address the admin is on"
+  publicUrl = /^https?:\/\/[^\s/]+/.test(publicUrl) ? publicUrl.replace(/\/+$/, '') : '';
   if (!admins?.length) throw new Error('at least one admin is required');
   const app = express();
   app.set('trust proxy', trustProxy);
@@ -148,7 +150,7 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
     const token = crypto.randomBytes(32).toString('hex');
     await db.query('INSERT INTO sessions (token_hash, expires_at, admin_name) VALUES ($1, $2, $3)', [sha(token).toString('hex'), now + SESSION_MS, who.name]);
     setCookie(req, res, token, SESSION_MS / 1000);
-    res.json({ ok: true, name: who.name });
+    res.json({ ok: true, name: who.name, publicUrl });
   });
 
   app.post('/api/admin/logout', async (req, res) => {
@@ -160,7 +162,7 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
 
   app.get('/api/admin/me', async (req, res) => {
     const name = await adminOf(req);
-    res.set('Cache-Control', 'no-store').json({ admin: !!name, name });
+    res.set('Cache-Control', 'no-store').json({ admin: !!name, name, publicUrl: name ? publicUrl : '' });
   });
 
   const admin = express.Router();

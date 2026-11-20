@@ -71,6 +71,17 @@ test('guests see available items only, and no reservation details', async () => 
   for (const secret of ['Sara', 'Omar', '0101', '0119', 'reservations', 'qty']) assert.ok(!raw.includes(secret), secret);
 });
 
+test('admins are told the public address for guest links', async () => {
+  const app = createApp({ db, photos: openPhotos({ dir: path.join(dataDir, 'photos') }), admins: [{ name: 'A', password: 'long enough pw' }], publicUrl: 'https://gifts.example.com/' });
+  const s = app.listen(0);
+  try {
+    const at = 'http://127.0.0.1:' + s.address().port;
+    assert.equal((await (await fetch(at + '/api/admin/me')).json()).publicUrl, '');
+    const r = await (await fetch(at + '/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'A', password: 'long enough pw' }) })).json();
+    assert.equal(r.publicUrl, 'https://gifts.example.com');
+  } finally { s.close(); }
+});
+
 test('cannot reserve more than is left', async () => {
   const over = await call('POST', `/api/l/${slug}/items/${diapers}/reserve`, { name: 'Mona', mobile: '01000000000', count: 8 }, { auth: false });
   assert.equal(over.status, 409);
