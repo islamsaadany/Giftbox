@@ -2,7 +2,7 @@
 
 Gift lists you share with a link. The admin creates lists and adds gifts; guests open a list's link, see only what is still available, and reserve one (or some pieces of one) with their name and mobile number.
 
-- **Admin**: `/admin`, behind a password. Lists, items, every reservation (name, mobile, how many, date), release per reservation.
+- **Admin**: `/admin`, behind a name and password for each admin. Lists, items, every reservation (name, mobile, how many, date), release per reservation.
 - **Guests**: `/l/<slug>`, a random 8-character link per list. The guest API never returns reservations, names or mobiles.
 
 ## Publish on Vercel
@@ -11,7 +11,7 @@ In the Vercel project:
 
 1. **Storage → Create Database → Neon (Postgres)** and connect it to the project. This adds `DATABASE_URL`.
 2. **Storage → Create → Blob**, with **public** access, and connect it to the project. This adds `BLOB_READ_WRITE_TOKEN`. Item pictures are stored here.
-3. **Settings → Environment Variables**: add `ADMIN_PASSWORD` (at least 8 characters).
+3. **Settings → Environment Variables**: add `ADMIN_USERS` with each admin as `Name:password`, separated by commas, e.g. `Alaa:their-password,Islam:their-password`.
 4. Redeploy. The tables are created automatically on the first request.
 
 Until all three are set, every page says what is missing. On Vercel the app runs from `api/index.js`; `vercel.json` sends every request there.
@@ -25,14 +25,14 @@ npm install
 ```
 
 ```bash
-ADMIN_PASSWORD='choose-a-long-password' npm start
+ADMIN_USERS='Alaa:a-long-password,Islam:another-one' npm start
 ```
 
 Then open http://localhost:3000/admin.
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
-| `ADMIN_PASSWORD` | Admin password, at least 8 characters (required) | none |
+| `ADMIN_USERS` | Admins as `Name:password,Name:password` (required). Names can't contain `:` or `,`; passwords can't contain `,` | none |
 | `DATABASE_URL` | Postgres connection string (`POSTGRES_URL` also works) | embedded database in `DATA_DIR` |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob token for pictures | pictures saved in `DATA_DIR` |
 | `DATA_DIR` | Folder for local data | `./data` |

@@ -10,7 +10,8 @@
   const cur = () => lists.find(l => l.id === listId);
   const guestLink = l => location.origin + '/l/' + l.slug;
   const pick = id => { listId = id; try { sessionStorage.setItem('wb.list', id); } catch (_) {} };
-  const top = signedIn => `<header class="top"><div class="brand">${gift}Wishbox</div>${signedIn ? '<button class="link-btn" id="logout">Sign out</button>' : ''}</header>`;
+  let me = '';
+  const top = signedIn => `<header class="top"><div class="brand">${gift}Wishbox</div>${signedIn ? `<button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button>` : ''}</header>`;
 
   /* Any admin call can find the session expired: go back to the login screen */
   async function call(method, url, body) {
@@ -20,8 +21,9 @@
 
   async function start() {
     try {
-      const me = await api('GET', '/api/admin/me');
-      if (!me.admin) return login();
+      const r = await api('GET', '/api/admin/me');
+      if (!r.admin) return login();
+      me = r.name;
       await refresh();
     } catch (e) { app.innerHTML = top(false) + `<div class="empty"><h3>Couldn't load</h3>${esc(problem(e))}</div>`; }
   }
@@ -29,17 +31,18 @@
   function login() {
     app.innerHTML = top(false) + `<div class="center"><form class="panel" id="lg" novalidate>
       <div><div class="eyebrow">Admin</div><h1>Sign in</h1></div>
+      <div class="field"><label for="un">Name</label><input id="un" autocomplete="username" autocapitalize="words" maxlength="60"></div>
       <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div>
       <div class="err" id="lge" role="alert"></div>
       <button class="btn primary" id="lgo">Sign in</button></form></div>`;
     $('lg').onsubmit = e => {
       e.preventDefault();
       busy($('lgo'), async () => {
-        try { await api('POST', '/api/admin/login', { password: $('pw').value }); await refresh(); }
-        catch (x) { const el = $('lge'); if (el) el.textContent = x.code === 'wrong_password' ? 'That password isn’t right.' : problem(x); }
+        try { me = (await api('POST', '/api/admin/login', { name: $('un').value, password: $('pw').value })).name; await refresh(); }
+        catch (x) { const el = $('lge'); if (el) el.textContent = x.code === 'wrong_login' ? 'That name or password isn’t right.' : problem(x); }
       });
     };
-    $('pw').focus();
+    $('un').focus();
   }
 
   async function refresh() {

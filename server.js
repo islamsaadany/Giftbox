@@ -3,10 +3,11 @@ const path = require('node:path');
 const { createApp } = require('./src/app');
 const { openDb } = require('./src/db');
 const { openPhotos } = require('./src/photos');
+const { readAdmins } = require('./src/admins');
 
-const adminPassword = process.env.ADMIN_PASSWORD;
-if (!adminPassword || adminPassword.length < 8) {
-  console.error('Set ADMIN_PASSWORD (at least 8 characters) before starting Wishbox.');
+const admins = readAdmins(process.env);
+if (!admins.length) {
+  console.error('Set ADMIN_USERS (e.g. "Alaa:password,Islam:password") before starting Wishbox.');
   process.exit(1);
 }
 
@@ -16,6 +17,6 @@ const db = openDb({ url, dir: path.join(dataDir, 'pg') });
 const photos = openPhotos({ blobToken: process.env.BLOB_READ_WRITE_TOKEN, dir: path.join(dataDir, 'photos') });
 const port = Number(process.env.PORT) || 3000;
 
-const server = createApp({ db, photos, adminPassword }).listen(port, () =>
+const server = createApp({ db, photos, admins }).listen(port, () =>
   console.log(`Wishbox on http://localhost:${port}  (admin: /admin, database: ${url ? 'Postgres' : 'local, in ' + dataDir})`));
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => server.close(async () => { await db.close().catch(() => {}); process.exit(0); }));

@@ -24,7 +24,7 @@ async function call(method, url, body, { auth = true } = {}) {
 test.before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wishbox-'));
   db = openDb({ url: process.env.TEST_DATABASE_URL }); // set it to run against a real Postgres
-  const app = createApp({ db, photos: openPhotos({ dir: path.join(dataDir, 'photos') }), adminPassword: 'correct horse' });
+  const app = createApp({ db, photos: openPhotos({ dir: path.join(dataDir, 'photos') }), admins: [{ name: 'Alaa', password: 'correct horse' }, { name: 'Islam', password: 'second pass' }] });
   await new Promise(r => { server = app.listen(0, r); });
   base = 'http://127.0.0.1:' + server.address().port;
 });
@@ -33,8 +33,13 @@ test.after(async () => { server.close(); await db.close(); fs.rmSync(dataDir, { 
 test('admin API needs a login', async () => {
   assert.equal((await call('GET', '/api/admin/lists')).status, 401);
   assert.equal((await call('POST', '/api/admin/lists', { name: 'x' })).status, 401);
-  assert.equal((await call('POST', '/api/admin/login', { password: 'nope' })).status, 401);
-  assert.equal((await call('POST', '/api/admin/login', { password: 'correct horse' })).status, 200);
+  assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'nope' })).status, 401);
+  assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'second pass' })).status, 401);
+  assert.equal((await call('POST', '/api/admin/login', { name: 'Nobody', password: 'correct horse' })).status, 401);
+  assert.equal((await call('POST', '/api/admin/login', { name: ' islam ', password: 'second pass' })).status, 200);
+  assert.equal((await call('GET', '/api/admin/me')).body.name, 'Islam');
+  assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' })).status, 200);
+  assert.equal((await call('GET', '/api/admin/me')).body.name, 'Alaa');
   assert.equal((await call('GET', '/api/admin/lists')).status, 200);
 });
 
@@ -106,7 +111,7 @@ test('deleting a list removes its link; logout ends the session', async () => {
 });
 
 test('two guests racing for the last piece: only one wins', async () => {
-  await call('POST', '/api/admin/login', { password: 'correct horse' });
+  await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' });
   const l = (await call('POST', '/api/admin/lists', { name: 'Race' })).body.id;
   const it = (await call('POST', `/api/admin/lists/${l}/items`, { name: 'Bathtub' })).body.id;
   const s = (await call('GET', '/api/admin/lists')).body.lists.find(x => x.id === l).slug;
@@ -115,6 +120,6 @@ test('two guests racing for the last piece: only one wins', async () => {
 });
 
 test('too many wrong passwords locks sign-in for a while', async () => {
-  for (let i = 0; i < 10; i++) await call('POST', '/api/admin/login', { password: 'guess' + i });
-  assert.equal((await call('POST', '/api/admin/login', { password: 'correct horse' })).status, 429);
+  for (let i = 0; i < 10; i++) await call('POST', '/api/admin/login', { name: 'Alaa', password: 'guess' + i });
+  assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' })).status, 429);
 });

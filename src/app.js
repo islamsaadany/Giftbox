@@ -33,8 +33,8 @@ function limiter(max, windowMs) {
 }
 
 /* db: from ./db (query/tx/ready). photos: from ./photos (save/remove/url). */
-function createApp({ db, photos, adminPassword, trustProxy = 1 }) {
-  if (!adminPassword) throw new Error('adminPassword is required');
+function createApp({ db, photos, admins, trustProxy = 1 }) {
+  if (!admins?.length) throw new Error('at least one admin is required');
   const app = express();
   app.set('trust proxy', trustProxy);
   app.disable('x-powered-by');
@@ -108,17 +108,20 @@ function createApp({ db, photos, adminPassword, trustProxy = 1 }) {
   app.use('/api', async (req, res, next) => { await db.ready(); next(); });
 
   /* ---------- admin session ---------- */
-  const pwHash = sha(adminPassword);
+  const accounts = new Map(admins.map(a => [a.name.toLowerCase(), { name: a.name, hash: sha(a.password) }]));
+  const noAccount = { hash: crypto.randomBytes(32) };
   const reserveLimit = limiter(40, 60 * 60 * 1000);
 
   const cookieToken = req => {
     const m = new RegExp('(?:^|;\\s*)' + COOKIE + '=([a-f0-9]{64})').exec(req.headers.cookie || '');
     return m && m[1];
   };
-  const isAdmin = async req => {
+  // Returns the signed-in admin's name, or null. Removing someone from the admin list ends their sessions.
+  const adminOf = async req => {
     const t = cookieToken(req);
-    if (!t) return false;
-    return !!(await one('SELECT 1 AS ok FROM sessions WHERE token_hash = $1 AND expires_at > $2', [sha(t).toString('hex'), Date.now()]));
+    if (!t) return null;
+    const s = await one('SELECT admin_name FROM sessions WHERE token_hash = $1 AND expires_at > $2', [sha(t).toString('hex'), Date.now()]);
+    return s && accounts.get(String(s.admin_name).toLowerCase())?.name || null;
   };
   const setCookie = (req, res, value, maxAgeS) =>
     res.append('Set-Cookie', `${COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeS}${req.secure ? '; Secure' : ''}`);
@@ -129,16 +132,17 @@ function createApp({ db, photos, adminPassword, trustProxy = 1 }) {
     const f = await one('SELECT COUNT(*)::int AS n FROM login_failures WHERE ip = $1 AND at > $2', [ip, now - LOGIN_WINDOW_MS]);
     if (f.n >= LOGIN_MAX) throw new HttpError(429, 'too_many_attempts');
     const given = typeof req.body?.password === 'string' ? req.body.password : '';
-    if (!crypto.timingSafeEqual(sha(given), pwHash)) {
+    const who = accounts.get(typeof req.body?.name === 'string' ? req.body.name.trim().toLowerCase() : '');
+    if (!crypto.timingSafeEqual(sha(given), (who || noAccount).hash) || !who) {
       await db.query('INSERT INTO login_failures (ip, at) VALUES ($1, $2)', [ip, now]);
-      throw new HttpError(401, 'wrong_password');
+      throw new HttpError(401, 'wrong_login');
     }
     await db.query('DELETE FROM login_failures WHERE ip = $1 OR at < $2', [ip, now - LOGIN_WINDOW_MS]);
     await db.query('DELETE FROM sessions WHERE expires_at < $1', [now]);
     const token = crypto.randomBytes(32).toString('hex');
-    await db.query('INSERT INTO sessions (token_hash, expires_at) VALUES ($1, $2)', [sha(token).toString('hex'), now + SESSION_MS]);
+    await db.query('INSERT INTO sessions (token_hash, expires_at, admin_name) VALUES ($1, $2, $3)', [sha(token).toString('hex'), now + SESSION_MS, who.name]);
     setCookie(req, res, token, SESSION_MS / 1000);
-    res.json({ ok: true });
+    res.json({ ok: true, name: who.name });
   });
 
   app.post('/api/admin/logout', async (req, res) => {
@@ -148,12 +152,15 @@ function createApp({ db, photos, adminPassword, trustProxy = 1 }) {
     res.json({ ok: true });
   });
 
-  app.get('/api/admin/me', async (req, res) => res.set('Cache-Control', 'no-store').json({ admin: await isAdmin(req) }));
+  app.get('/api/admin/me', async (req, res) => {
+    const name = await adminOf(req);
+    res.set('Cache-Control', 'no-store').json({ admin: !!name, name });
+  });
 
   const admin = express.Router();
   admin.use(async (req, res, next) => {
     res.set('Cache-Control', 'no-store');
-    if (!(await isAdmin(req))) throw new HttpError(401, 'not_signed_in');
+    if (!(await adminOf(req))) throw new HttpError(401, 'not_signed_in');
     next();
   });
 

@@ -33,6 +33,7 @@ const SCHEMA = `
     token_hash TEXT PRIMARY KEY,
     expires_at BIGINT NOT NULL
   );
+  ALTER TABLE sessions ADD COLUMN IF NOT EXISTS admin_name TEXT;
   CREATE TABLE IF NOT EXISTS login_failures (
     ip TEXT NOT NULL,
     at BIGINT NOT NULL
