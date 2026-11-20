@@ -311,11 +311,12 @@ function createApp({ db, photos, admins, trustProxy = 1 }) {
   const page = name => (req, res) => res.set('Cache-Control', 'no-cache').sendFile(path.join(PUBLIC, name));
   app.get('/l/:slug', page('guest.html'));
   app.get('/admin', page('admin.html'));
-  app.get('/', page('index.html'));
+  // The main address goes to the admin sign-in. (No public/index.html, so Vercel doesn't serve a static page here.)
+  app.get('/', (req, res) => res.redirect(302, '/admin'));
   app.get('/healthz', (req, res) => res.type('text').send('ok'));
   if (photos.dir) app.use('/photos', express.static(photos.dir, { index: false, immutable: true, maxAge: '365d', fallthrough: false }));
   app.use(express.static(PUBLIC, { index: false, extensions: false, setHeaders: res => res.set('Cache-Control', 'no-cache') }));
-  app.use((req, res) => res.status(404).sendFile(path.join(PUBLIC, 'index.html')));
+  app.use((req, res) => res.status(404).sendFile(path.join(PUBLIC, 'notfound.html')));
 
   app.use((err, req, res, next) => {
     if (err instanceof HttpError) return res.status(err.status).json(err.body);

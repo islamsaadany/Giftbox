@@ -123,3 +123,10 @@ test('too many wrong passwords locks sign-in for a while', async () => {
   for (let i = 0; i < 10; i++) await call('POST', '/api/admin/login', { name: 'Alaa', password: 'guess' + i });
   assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' })).status, 429);
 });
+
+test('the main address goes to the admin sign-in', async () => {
+  const r = await fetch(base + '/', { redirect: 'manual' });
+  assert.equal(r.status, 302);
+  assert.equal(r.headers.get('location'), '/admin');
+  assert.equal((await fetch(base + '/nope')).status, 404);
+});
