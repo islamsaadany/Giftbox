@@ -174,16 +174,35 @@
       <div class="field"><label for="iq">Quantity</label><input id="iq" type="number" inputmode="numeric" min="1" max="999" value="${it?.qty || 1}"></div></div>
       <div class="field"><label for="il">Shop link</label><input id="il" type="url" inputmode="url" placeholder="https://" maxlength="2000" value="${esc(it?.link || '')}"></div>
       <div class="field"><label for="iph">Picture</label><div class="photo-pick"><div class="thumb" id="th">${thumb(it?.photo)}</div>
-        <div class="side"><input id="iph" type="file" accept="image/*"><button type="button" class="btn ghost" id="rmph" ${it?.photo ? '' : 'hidden'}>Remove picture</button></div></div>
-        <span class="hint">Take a screenshot from the shop page and upload it here.</span></div>
+        <div class="side"><input id="iph" type="file" accept="image/*"><button type="button" class="btn ghost" id="pph">Paste picture</button><button type="button" class="btn ghost" id="rmph" ${it?.photo ? '' : 'hidden'}>Remove picture</button></div></div>
+        <span class="hint">Copy a picture or screenshot and paste it here (Ctrl+V / ⌘V), or choose a file.</span></div>
       <div class="err" id="ie" role="alert"></div>
       <div class="actions">${it ? '<button type="button" class="btn danger left" id="idel">Delete</button>' : ''}<button type="button" class="btn ghost" data-close>Cancel</button><button class="btn primary" id="igo">${it ? 'Save' : 'Add to list'}</button></div>
     </form>`, () => {
       const th = $('th'), rm = $('rmph'), err = $('ie');
-      $('iph').onchange = async e => {
-        const f = e.target.files[0]; if (!f) return;
+      const use = async f => {
         try { photo = await shrink(f); th.innerHTML = thumb(photo); rm.hidden = false; err.textContent = ''; }
         catch (_) { err.textContent = 'That picture couldn’t be read. Try a JPG or PNG.'; }
+      };
+      $('iph').onchange = e => { const f = e.target.files[0]; if (f) use(f); };
+      // Paste anywhere while the form is open; text pastes into fields are left alone
+      const form = $('if');
+      const onPaste = e => {
+        if (!form.isConnected) { document.removeEventListener('paste', onPaste); return; }
+        const f = [...(e.clipboardData?.files || [])].find(x => x.type.startsWith('image/'));
+        if (!f) return;
+        e.preventDefault(); $('iph').value = ''; use(f);
+      };
+      document.addEventListener('paste', onPaste);
+      // Button for phones and for people who don't use the keyboard shortcut
+      $('pph').onclick = async () => {
+        try {
+          for (const ci of await navigator.clipboard.read()) {
+            const t = ci.types.find(x => x.startsWith('image/'));
+            if (t) { $('iph').value = ''; return use(await ci.getType(t)); }
+          }
+          err.textContent = 'There is no picture in the clipboard. Copy one first.';
+        } catch (_) { err.textContent = 'The clipboard couldn’t be read. Press Ctrl+V (⌘V on Mac) instead.'; }
       };
       rm.onclick = () => { photo = null; th.innerHTML = gift; rm.hidden = true; $('iph').value = ''; };
       $('if').onsubmit = e => {
