@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const { promisify } = require('node:util');
 const path = require('node:path');
 const { Readable } = require('node:stream');
@@ -75,6 +76,15 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '' }) {
     next();
   });
   app.use(express.json({ limit: '1500kb' }));
+
+  /* A fingerprint of the pages, scripts and styles this server hands out. An open app compares it with
+     the one it started with, and offers to reload when a new version has been deployed. */
+  const version = (() => {
+    const h = crypto.createHash('sha256');
+    for (const f of fs.readdirSync(PUBLIC).sort()) if (/\.(html|js|css|webmanifest)$/.test(f)) h.update(f).update(fs.readFileSync(path.join(PUBLIC, f)));
+    return h.digest('hex').slice(0, 16);
+  })();
+  app.get('/api/version', (req, res) => res.set('Cache-Control', 'no-store').json({ version }));
 
   /* ---------- helpers ---------- */
   const rows = async (sql, params) => (await db.query(sql, params)).rows;

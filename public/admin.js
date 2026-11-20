@@ -432,5 +432,32 @@
     });
   }
 
+  /* ---------- new version ----------
+     A phone keeps the home-screen app open for days. When the server has a newer version than this page
+     started with, offer to reload. Checked when the app comes back to the front, and every few minutes. */
+  let myVersion = null, offered = false, myLater = 0;
+  async function checkVersion() {
+    if (offered || document.hidden) return;
+    let v;
+    try { v = (await api('GET', '/api/version')).version; } catch (_) { return; }
+    if (!myVersion) { myVersion = v; return; }
+    if (v !== myVersion) { offered = true; offerReload(); }
+  }
+  function offerReload() {
+    // Reloading would throw away a form being filled in: wait until it is closed
+    if ($('layer').firstChild) return void setTimeout(offerReload, 3000);
+    const box = document.createElement('div');
+    box.className = 'update'; box.setAttribute('role', 'alertdialog'); box.setAttribute('aria-label', 'New version');
+    box.innerHTML = `<div class="brand">${logo}New version ready</div><p>Wishbox has been updated. Reload to get the latest version.</p>
+      <button class="btn primary" id="upd-go">Reload app</button><button class="link-btn" id="upd-later">Later</button>`;
+    document.body.appendChild(box);
+    $('upd-go').onclick = () => location.reload();
+    // "Later" hides it until the app is next brought to the front
+    $('upd-later').onclick = () => { box.remove(); offered = false; myLater = Date.now(); };
+  }
+  checkVersion();
+  document.addEventListener('visibilitychange', () => { if (Date.now() - myLater > 60000) checkVersion(); });
+  setInterval(() => { if (Date.now() - myLater > 30 * 60000) checkVersion(); }, 5 * 60000);
+
   start();
 })();

@@ -294,6 +294,13 @@ test('too many wrong passwords locks sign-in for a while', async () => {
   assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' })).status, 429);
 });
 
+test('the app can ask which version is deployed', async () => {
+  const v = await call('GET', '/api/version', null, { auth: false });
+  assert.equal(v.status, 200);
+  assert.match(v.body.version, /^[a-f0-9]{16}$/);
+  assert.equal((await call('GET', '/api/version', null, { auth: false })).body.version, v.body.version);
+});
+
 test('the main address goes to the admin sign-in', async () => {
   const r = await fetch(base + '/', { redirect: 'manual' });
   assert.equal(r.status, 302);
