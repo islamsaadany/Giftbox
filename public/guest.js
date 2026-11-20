@@ -55,6 +55,17 @@
   addEventListener('resize', measure);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
 
+  // Opened with "Preview as guest" from the signed-in app: offer the way back (guests never get this link)
+  if (location.hash === '#preview') {
+    const back = document.createElement('button');
+    back.className = 'backbar';
+    back.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Back to my lists';
+    // Go back to the app as it was; opened in a tab of its own, there is nothing to go back to
+    back.onclick = () => { if (history.length > 1) history.back(); else location.href = '/admin'; };
+    document.body.appendChild(back);
+    document.body.classList.add('previewing');
+  }
+
   function message(html) {
     header('', '');
     app.innerHTML = `<div id="hspace"></div>${html}`;

@@ -110,17 +110,36 @@
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(setupPanel);
 
   /* The "more" button: the list's less frequent actions */
+  /* All the lists, to move between them (opened from the list's name, or from More) */
+  function listSwitcher() {
+    open(`<h2>${viewing ? esc(viewing.name) + '’s lists' : 'Your lists'}</h2><div class="menu">
+      ${lists.map(x => `<button class="btn" data-pick="${x.id}" aria-current="${x.id === listId}">${esc(x.name)}${x.mine || viewing ? '' : `<small>Shared by ${esc(x.owner)}</small>`}</button>`).join('')}
+      ${viewing ? '' : '<button class="btn ghost" id="sw-new">+ New list</button>'}
+    </div><div class="actions"><button class="btn ghost" data-close>Close</button></div>`, sh => {
+      sh.querySelectorAll('[data-pick]').forEach(b => (b.onclick = () => { close(); pick(Number(b.dataset.pick)); filter = 'all'; render(); scrollTo(0, 0); }));
+      const n = sh.querySelector('#sw-new'); if (n) n.onclick = () => { close(); listForm(); };
+    });
+  }
+
+  /* The preview opens in a new tab on a laptop. On a phone, or in the home-screen app, there are no tabs to come back
+     from, so it opens in place and the guest page shows a "Back to my lists" button (the #preview mark asks for it). */
+  const previewTab = () => (matchMedia('(max-width:599px)').matches || matchMedia('(display-mode: standalone)').matches ? '' : ' target="_blank" rel="noopener"');
+
   function listMenu() {
     const l = cur();
     open(`<h2>${esc(l.name)}</h2><div class="menu">
+${lists.length > 1 ? '<button class="btn" id="menu-switch">Switch list</button>' : ''}
       <button class="btn" id="edit-list">Rename list</button>
       <button class="btn" id="menu-copy">Copy guest link</button>
       ${full(l) ? '<button class="btn" id="collab">Collaborators</button>' : ''}
-      <a class="btn" href="/l/${esc(l.slug)}" target="_blank" rel="noopener" data-close>Preview as guest</a>
+      <a class="btn" href="/l/${esc(l.slug)}#preview"${previewTab()} data-close>Preview as guest</a>
+      ${viewing ? '' : '<button class="btn" id="menu-new">+ New list</button>'}
       ${full(l) ? '' : '<button class="btn danger" id="leave">Leave list</button>'}
     </div><div class="actions"><button class="btn ghost" data-close>Close</button></div>`, sh => {
       const on = (id, f) => { const e = sh.querySelector('#' + id); if (e) e.onclick = () => { close(); f(); }; };
       on('edit-list', () => listForm(l));
+      on('menu-switch', listSwitcher);
+      on('menu-new', () => listForm());
       on('menu-copy', copyLink);
       on('collab', () => collabForm());
       on('leave', () => { const l = cur(); confirmBox('Leave “' + l.name + '”?', 'You won’t see or edit this list any more. ' + l.owner + ' can add you again.', 'Leave list',
@@ -138,9 +157,11 @@
 
   function render() {
     const l = cur();
-    let h = top(true) + `<nav class="lists" aria-label="Your lists">${lists.map(x => `<button class="chip" data-list="${x.id}" aria-current="${x.id === listId}">${esc(x.name)}</button>`).join('')}${viewing ? '' : '<button class="chip" id="new-list">+ New list</button>'}</nav>`;
-    if (viewing) h = top(true) + `<p class="viewing">Viewing <b>${esc(viewing.name)}</b>’s lists. Changes you make here change their lists.</p>` + h.slice(top(true).length);
-    if (!l) h += viewing ? `<div class="empty"><h3>No lists yet</h3>${esc(viewing.name)} hasn't created a list.</div>` : `<div class="empty"><h3>No lists yet</h3>Create your first list, then add the gifts you'd like.</div>`;
+    // No row of list names up here: the panel shows the current list, and with several lists its name opens the switcher
+    let h = top(true) + (viewing ? `<p class="viewing">Viewing <b>${esc(viewing.name)}</b>’s lists. Changes you make here change their lists.</p>` : '');
+    const many = lists.length > 1;
+    const caret = many ? '<svg class="lp-caret" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>' : '';
+    if (!l) h += viewing ? `<div class="empty"><h3>No lists yet</h3>${esc(viewing.name)} hasn't created a list.</div>` : `<div class="empty"><h3>No lists yet</h3>Create your first list, then add the gifts you'd like.<div style="margin-top:14px"><button class="btn primary" id="new-list">+ New list</button></div></div>`;
     else {
       const taken = l.items.filter(i => leftOf(i) === 0).length, avail = l.items.length - taken;
       const shown = l.items.filter(i => filter === 'all' || (filter === 'taken' ? resN(i) > 0 : leftOf(i) > 0))
@@ -150,13 +171,13 @@
       const linkIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>';
       const eyeIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
       h += `<div id="lp-top"></div><div class="lp-stick"><section class="lpanel" id="lpanel">
-        <div class="lp-title"><div class="lp-eyebrow">${l.mine ? 'Gift list' : 'Shared by ' + esc(l.owner)}</div><h2>${esc(l.name)}</h2>${others(l).length ? `<p class="lp-with">${l.mine || viewing ? 'Shared with' : 'Also shared with'} ${esc(others(l).join(', '))}</p>` : ''}</div>
+        <div class="lp-title"${many ? ' id="switch" role="button" tabindex="0" aria-haspopup="dialog" aria-label="' + esc(l.name) + ', switch list"' : ''}><div class="lp-eyebrow">${l.mine ? 'Gift list' : 'Shared by ' + esc(l.owner)}${many ? ' · ' + lists.length + ' lists' : ''}</div><h2>${esc(l.name)}${caret}</h2>${others(l).length ? `<p class="lp-with">${l.mine || viewing ? 'Shared with' : 'Also shared with'} ${esc(others(l).join(', '))}</p>` : ''}</div>
         <button class="lp-more" id="more" aria-label="More actions for this list" aria-haspopup="dialog"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
         <button class="btn primary lp-add" id="add-item">+ Add item</button>
         <div class="lp-rule"></div>
         <div class="lp-filters" role="group" aria-label="Filter">${[['all', 'All'], ['available', 'Available'], ['taken', 'Reserved']].map(([f, t]) => `<button class="lp-chip" data-filter="${f}" aria-pressed="${filter === f}">${t} <b>${counts[f]}</b></button>`).join('')}</div>
-        <div class="lp-links"><button class="lp-link lp-copy" id="copy-link">${linkIcon}Copy guest link</button><a class="lp-link lp-preview" href="/l/${esc(l.slug)}" target="_blank" rel="noopener">${eyeIcon}Preview</a></div>
-        <div class="lp-slim" aria-hidden="true"><b>${esc(l.name)}</b></div>
+        <div class="lp-links"><button class="lp-link lp-copy" id="copy-link">${linkIcon}Copy guest link</button><a class="lp-link lp-preview" href="/l/${esc(l.slug)}#preview"${previewTab()}>${eyeIcon}Preview</a></div>
+        <div class="lp-slim" aria-hidden="true"><b>${esc(l.name)}</b>${caret}</div>
       </section></div><div id="lp-gap"></div>
       <nav class="bbar" aria-label="List actions">
         <button class="bb-side" id="bb-copy">${linkIcon.replace(/"15"/g, '"20"')}<span>Copy link</span></button>
@@ -185,13 +206,14 @@
     on('theme', themePicker);
     on('nav', () => { view = view === 'users' ? 'lists' : 'users'; viewing = null; lists = []; pick(null); refresh().catch(e => toast(problem(e))); });
     on('new-list', () => listForm());
+    on('switch', listSwitcher);
+    const sw = $('switch'); if (sw) sw.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); listSwitcher(); } };
     on('more', listMenu);
     on('add-item', () => itemForm());
     on('copy-link', copyLink);
     on('bb-copy', copyLink);
     on('bb-add', () => itemForm());
     on('bb-more', listMenu);
-    app.querySelectorAll('[data-list]').forEach(b => (b.onclick = () => { pick(Number(b.dataset.list)); filter = 'all'; render(); }));
     app.querySelectorAll('[data-filter]').forEach(b => (b.onclick = () => { filter = b.dataset.filter; render(); }));
     app.querySelectorAll('[data-edit]').forEach(b => (b.onclick = () => itemForm(item(b.dataset.edit))));
     app.querySelectorAll('[data-release]').forEach(b => (b.onclick = () => {
