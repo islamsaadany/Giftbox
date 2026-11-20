@@ -196,6 +196,9 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 }
 .menu{display:grid;gap:8px}
 .menu .btn{text-align:left;padding:12px 14px}
+.menu .btn.ic{display:flex;align-items:center;gap:12px}
+.menu .btn.ic svg{flex:none;color:var(--accent-deep)}
+.menu .btn.ic.danger svg{color:inherit}
 /* cards, on the guest and the admin page: soft, with the price as the main line */
 .guest .grid{margin-top:2px}
 .card{border:0;border-radius:18px;padding:8px;gap:8px;overflow:visible;box-shadow:0 1px 3px rgb(33 31 54 / .08)}

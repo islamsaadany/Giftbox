@@ -127,20 +127,27 @@
 
   function listMenu() {
     const l = cur();
+    const ic = d => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+    const icons = {
+      swap: ic('<path d="M7 4L3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7"/>'),
+      pen: ic('<path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/>'),
+      people: ic('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.4c2.1.8 3.5 2.8 3.5 5.6"/>'),
+      eye: ic('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+      plus: ic('<path d="M12 5v14M5 12h14"/>'),
+      leave: ic('<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9"/>'),
+    };
     open(`<h2>${esc(l.name)}</h2><div class="menu">
-${lists.length > 1 ? '<button class="btn" id="menu-switch">Switch list</button>' : ''}
-      <button class="btn" id="edit-list">Rename list</button>
-      <button class="btn" id="menu-copy">Copy guest link</button>
-      ${full(l) ? '<button class="btn" id="collab">Collaborators</button>' : ''}
-      <a class="btn" href="/l/${esc(l.slug)}#preview"${previewTab()} data-close>Preview as guest</a>
-      ${viewing ? '' : '<button class="btn" id="menu-new">+ New list</button>'}
-      ${full(l) ? '' : '<button class="btn danger" id="leave">Leave list</button>'}
+      ${lists.length > 1 ? `<button class="btn ic" id="menu-switch">${icons.swap}Switch list</button>` : ''}
+      <button class="btn ic" id="edit-list">${icons.pen}Rename list</button>
+      ${full(l) ? `<button class="btn ic" id="collab">${icons.people}Collaborators</button>` : ''}
+      <a class="btn ic" href="/l/${esc(l.slug)}#preview"${previewTab()} data-close>${icons.eye}Preview as guest</a>
+      ${viewing ? '' : `<button class="btn ic" id="menu-new">${icons.plus}New list</button>`}
+      ${full(l) ? '' : `<button class="btn ic danger" id="leave">${icons.leave}Leave list</button>`}
     </div><div class="actions"><button class="btn ghost" data-close>Close</button></div>`, sh => {
       const on = (id, f) => { const e = sh.querySelector('#' + id); if (e) e.onclick = () => { close(); f(); }; };
       on('edit-list', () => listForm(l));
       on('menu-switch', listSwitcher);
       on('menu-new', () => listForm());
-      on('menu-copy', copyLink);
       on('collab', () => collabForm());
       on('leave', () => { const l = cur(); confirmBox('Leave “' + l.name + '”?', 'You won’t see or edit this list any more. ' + l.owner + ' can add you again.', 'Leave list',
       () => act(() => call('DELETE', `/api/admin/lists/${l.id}/collaborators/${l.collaborators.find(c => c.name === me).id}`), 'You left the list')); });
