@@ -11,7 +11,8 @@
   const guestLink = l => location.origin + '/l/' + l.slug;
   const pick = id => { listId = id; try { sessionStorage.setItem('wb.list', id); } catch (_) {} };
   let me = '', theme = 'pink', isAdmin = false, view = 'lists', users = [];
-  const top = signedIn => `<header class="top"><div class="brand">${logo}Wishbox</div>${signedIn ? `<div class="share">${isAdmin ? `<button class="link-btn" id="nav">${view === 'users' ? 'My lists' : 'Users'}</button>` : ''}<button class="link-btn" id="theme">Colour</button><button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button></div>` : ''}</header>`;
+  let viewing = null; // admin looking at another user's lists (view only): { id, name }
+  const top = signedIn => `<header class="top"><div class="brand">${logo}Wishbox</div>${signedIn ? `<div class="share">${isAdmin ? `<button class="link-btn" id="nav">${view === 'users' ? 'My lists' : viewing ? 'Back to users' : 'Users'}</button>` : ''}<button class="link-btn" id="theme">Colour</button><button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button></div>` : ''}</header>`;
 
   /* Any admin call can find the session expired: go back to the login screen */
   async function call(method, url, body) {
@@ -29,7 +30,7 @@
   }
 
   function login() {
-    lists = []; users = []; view = 'lists'; isAdmin = false; pick(null);
+    lists = []; users = []; view = 'lists'; viewing = null; isAdmin = false; pick(null);
     app.innerHTML = top(false) + `<div class="center"><form class="panel" id="lg" novalidate>
       <div><div class="eyebrow">Your gift lists</div><h1>Sign in</h1></div>
       <div class="field"><label for="un">Username</label><input id="un" autocomplete="username" autocapitalize="words" maxlength="30"></div>
@@ -51,7 +52,7 @@
 
   async function refresh() {
     if (view === 'users') { users = (await call('GET', '/api/admin/users')).users; return renderUsers(); }
-    lists = (await call('GET', '/api/admin/lists')).lists;
+    lists = (await call('GET', viewing ? `/api/admin/users/${viewing.id}/lists` : '/api/admin/lists')).lists;
     if (!cur()) pick(lists[0]?.id || null);
     render();
   }
@@ -66,26 +67,27 @@
 
   function render() {
     const l = cur();
-    let h = top(true) + `<nav class="lists" aria-label="Your lists">${lists.map(x => `<button class="chip" data-list="${x.id}" aria-current="${x.id === listId}">${esc(x.name)}</button>`).join('')}<button class="chip" id="new-list">+ New list</button></nav>`;
-    if (!l) h += `<div class="empty"><h3>No lists yet</h3>Create your first list, then add the gifts you'd like.</div>`;
+    let h = top(true) + `<nav class="lists" aria-label="Your lists">${lists.map(x => `<button class="chip" data-list="${x.id}" aria-current="${x.id === listId}">${esc(x.name)}</button>`).join('')}${viewing ? '' : '<button class="chip" id="new-list">+ New list</button>'}</nav>`;
+    if (viewing) h = top(true) + `<p class="viewing">Viewing <b>${esc(viewing.name)}</b>’s lists. Only they can change them.</p>` + h.slice(top(true).length);
+    if (!l) h += viewing ? `<div class="empty"><h3>No lists yet</h3>${esc(viewing.name)} hasn't created a list.</div>` : `<div class="empty"><h3>No lists yet</h3>Create your first list, then add the gifts you'd like.</div>`;
     else {
       const taken = l.items.filter(i => leftOf(i) === 0).length, avail = l.items.length - taken;
       const shown = l.items.filter(i => filter === 'all' || (filter === 'taken' ? resN(i) > 0 : leftOf(i) > 0));
       h += `<section class="panel">
         <div class="panel-head"><div><div class="eyebrow">Gift list</div><h2>${esc(l.name)}</h2></div>
-          <div class="share"><button class="btn ghost" id="edit-list">Rename</button><button class="btn primary" id="add-item">+ Add item</button></div></div>
+          ${viewing ? '' : '<div class="share"><button class="btn ghost" id="edit-list">Rename</button><button class="btn primary" id="add-item">+ Add item</button></div>'}</div>
         <div class="stats"><span><b>${l.items.length}</b>items</span><span><b>${avail}</b>available</span><span><b>${taken}</b>reserved</span></div>
         <div class="share"><button class="btn" id="copy-link">Copy guest link</button><a class="btn ghost" href="/l/${esc(l.slug)}" target="_blank" rel="noopener">Preview as guest</a></div>
         <div class="filters" role="group" aria-label="Filter">${['all', 'available', 'taken'].map(f => `<button class="chip" data-filter="${f}" aria-current="${filter === f}">${f === 'all' ? 'All' : f === 'available' ? 'Available' : 'Reserved'}</button>`).join('')}</div>
       </section>`;
-      if (!l.items.length) h += `<div class="empty"><h3>This list is empty</h3>Tap “Add item” to add the first gift: a name, price, shop link and photo.</div>`;
+      if (!l.items.length) h += viewing ? `<div class="empty"><h3>This list is empty</h3>No gifts have been added yet.</div>` : `<div class="empty"><h3>This list is empty</h3>Tap “Add item” to add the first gift: a name, price, shop link and photo.</div>`;
       else if (!shown.length) h += `<div class="empty">Nothing here for this filter.</div>`;
       else h += `<div class="grid">${shown.map(it => `<article class="card">${pic(it)}<div class="card-body">
         <div class="meta">${statusPill(it)}</div>
         <h3>${esc(it.name)}</h3>
         <div class="price">${priceLine(it)}</div>
-        ${it.reservations.length ? `<div class="who-list">${it.reservations.map(r => `<div class="who"><div><strong>${esc(r.name)}${it.qty > 1 ? ` · ×${r.count}` : ''}</strong><span class="num">${esc(r.mobile)}</span><span>${new Date(r.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></div><button class="rel" data-release="${it.id}|${r.id}">Release</button></div>`).join('')}</div>` : ''}
-        <div class="row"><button class="btn soft" data-edit="${it.id}">Edit</button>${it.link ? `<a class="shoplink" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">View in shop</a>` : '<span class="shoplink none" aria-hidden="true">&nbsp;</span>'}</div>
+        ${it.reservations.length ? `<div class="who-list">${it.reservations.map(r => `<div class="who"><div><strong>${esc(r.name)}${it.qty > 1 ? ` · ×${r.count}` : ''}</strong><span class="num">${esc(r.mobile)}</span><span>${new Date(r.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></div>${viewing ? '' : `<button class="rel" data-release="${it.id}|${r.id}">Release</button>`}</div>`).join('')}</div>` : ''}
+        <div class="row">${viewing ? '' : `<button class="btn soft" data-edit="${it.id}">Edit</button>`}${it.link ? `<a class="shoplink" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">View in shop</a>` : '<span class="shoplink none" aria-hidden="true">&nbsp;</span>'}</div>
       </div></article>`).join('')}</div>`;
     }
     app.innerHTML = h;
@@ -97,7 +99,7 @@
     const item = id => cur().items.find(i => String(i.id) === id);
     on('logout', async () => { try { await api('POST', '/api/admin/logout', {}); } catch (_) {} login(); });
     on('theme', themePicker);
-    on('nav', () => { view = view === 'users' ? 'lists' : 'users'; refresh().catch(e => toast(problem(e))); });
+    on('nav', () => { view = view === 'users' ? 'lists' : 'users'; viewing = null; lists = []; pick(null); refresh().catch(e => toast(problem(e))); });
     on('new-list', () => listForm());
     on('edit-list', () => listForm(cur()));
     on('add-item', () => itemForm());
@@ -139,12 +141,17 @@
   function renderUsers() {
     app.innerHTML = top(true) + `<section class="panel">
       <div class="panel-head"><div><div class="eyebrow">Admin</div><h2>Users</h2></div><button class="btn primary" id="add-user">+ Add user</button></div>
-      <p class="hint">Create a username and password for each person, then send them both. Each person sees only their own lists.</p>
-      <div class="user-list">${users.map(u => `<div class="user"><div><strong>${esc(u.name)}</strong>${u.admin ? ' <span class="pill ok">Admin</span>' : ''}<span>${u.lists} ${u.lists === 1 ? 'list' : 'lists'}</span></div><button class="btn" data-user="${u.id}">Manage</button></div>`).join('')}</div>
+      <p class="hint">Create a username and password for each person, then send them both. Each person sees only their own lists; you can look at anyone’s with “Lists”.</p>
+      <div class="user-list">${users.map(u => `<div class="user"><div><strong>${esc(u.name)}</strong>${u.admin ? ' <span class="pill ok">Admin</span>' : ''}<span>${u.lists} ${u.lists === 1 ? 'list' : 'lists'}</span></div><div class="share"><button class="btn" data-lists="${u.id}">Lists</button><button class="btn" data-user="${u.id}">Manage</button></div></div>`).join('')}</div>
     </section>`;
     bind();
     $('add-user').onclick = () => userForm();
     app.querySelectorAll('[data-user]').forEach(b => (b.onclick = () => userForm(users.find(u => String(u.id) === b.dataset.user))));
+    app.querySelectorAll('[data-lists]').forEach(b => (b.onclick = () => {
+      const u = users.find(x => String(x.id) === b.dataset.lists);
+      viewing = { id: u.id, name: u.name }; view = 'lists'; lists = []; pick(null); filter = 'all';
+      refresh().catch(e => toast(problem(e)));
+    }));
   }
 
   const userProblem = x => x.code === 'name_taken' ? 'That username is taken. Try another one.'

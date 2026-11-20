@@ -151,7 +151,8 @@ test('admins create the users, and each user sees only their own lists', async (
   assert.equal((await call('GET', '/api/l/' + blueSlug, null, { auth: false })).body.theme, 'blue');
   assert.equal((await call('GET', '/api/l/' + theirSlug, null, { auth: false })).body.theme, 'pink');
   await call('DELETE', '/api/admin/lists/' + blueList);
-  // a user can't manage users
+  // a user can't manage users or look at someone else's lists
+  assert.equal((await call('GET', `/api/admin/users/${all[0].id}/lists`)).status, 403);
   assert.equal((await call('GET', '/api/admin/users')).status, 403);
   assert.equal((await call('POST', '/api/admin/users', { name: 'Friend', password: 'long enough' })).status, 403);
   assert.equal((await call('PATCH', '/api/admin/users/' + all[0].id, { password: 'taken over' })).status, 403);
@@ -172,6 +173,10 @@ test('admins create the users, and each user sees only their own lists', async (
   assert.deepEqual((await call('GET', '/api/admin/lists')).body.lists.map(l => l.name), ['Mona list']);
 
   cookie = alaaCookie;
+  // the admin can look at a user's lists
+  const seen = await call('GET', `/api/admin/users/${mona.body.id}/lists`);
+  assert.deepEqual([seen.status, seen.body.name, seen.body.lists.map(x => x.name)], [200, 'Mona', ['Mona list']]);
+  assert.equal((await call('GET', '/api/admin/users/99999/lists')).status, 404);
   const l = (await call('GET', '/api/admin/lists')).body.lists.find(x => x.id === theirs);
   assert.deepEqual([l.name, l.items[0].name, l.items[0].reservations.length], ['Alaa only', 'Stroller', 1]);
   assert.ok(!(await call('GET', '/api/admin/lists')).body.lists.some(x => x.id === mine));

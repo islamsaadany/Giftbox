@@ -103,6 +103,8 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .swatch i{width:36px;height:36px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 5px var(--accent-soft)}
 .swatch[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-deep)}
 .swatch[aria-pressed="true"] i{box-shadow:0 0 0 5px var(--surface)}
+.viewing{margin:0 0 12px;padding:10px 14px;border-radius:12px;background:var(--accent-soft);color:var(--accent-deep);font-size:14px}
+.user .share{display:flex;flex:none;flex-wrap:nowrap}
 .user-list{display:grid;gap:8px}
 .user{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .user div{display:grid;gap:2px;min-width:0;overflow-wrap:anywhere}
