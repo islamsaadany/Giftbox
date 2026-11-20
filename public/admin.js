@@ -63,6 +63,70 @@
     render();
   }
 
+  function copyLink() {
+    const t = guestLink(cur());
+    try { navigator.clipboard.writeText(t).then(() => toast('Link copied'), () => showLink(t)); } catch (_) { showLink(t); }
+  }
+
+  /* The list panel collapses as the page scrolls. It sticks to the top and is squeezed by exactly as much as the
+     page has scrolled past it, down to one slim row: the list name, "more" and Add item. A gap under it grows by the
+     same amount, so the cards below never jump. Positions are measured from the tall layout each time it is drawn. */
+  const SLIM = 56, NAME_SHRINK = 19 / 24;
+  let panel = null, panelQueued = false;
+  function setupPanel() {
+    const box = $('lpanel'); panel = null;
+    if (!box) return;
+    const h2 = box.querySelector('h2'), more = $('more'), add = $('add-item'), plus = $('add-plus');
+    box.style.height = ''; $('lp-gap').style.height = ''; box.style.setProperty('--p', 0); box.classList.remove('m', 'slimmed');
+    const tall = box.offsetHeight, phone = getComputedStyle(plus).display !== 'none';
+    // Room for the name in the slim row, left of the buttons
+    const firstButton = phone ? box.clientWidth - 16 - 40 - 8 - 40 : more.offsetLeft;
+    box.style.setProperty('--rsv', (box.clientWidth - firstButton + 8) + 'px');
+    // The name slides and shrinks into the slim row when it is one line and fits there; otherwise it fades to a shortened copy
+    const oneLine = h2.offsetHeight < 40, fits = h2.scrollWidth * NAME_SHRINK <= firstButton - 8 - h2.offsetLeft;
+    box.classList.toggle('m', oneLine && fits);
+    box.style.setProperty('--ndy', ((SLIM - h2.offsetHeight * NAME_SHRINK) / 2 - h2.offsetTop) + 'px');
+    box.style.setProperty('--mdy', (8 - more.offsetTop) + 'px');
+    box.style.setProperty('--ady', (8 - add.offsetTop) + 'px');
+    panel = { box, tall };
+    squeezePanel();
+  }
+  function squeezePanel() {
+    panelQueued = false;
+    // While a form is open the page is held still (see lock() in ui.js): leave the panel as it is
+    if (!panel || !panel.box.isConnected || document.body.classList.contains('locked')) return;
+    const { box, tall } = panel, range = tall - SLIM;
+    // How far the page has scrolled past the point where the panel reaches the top (its wrapper starts 8px above the marker)
+    const past = 8 - $('lp-top').getBoundingClientRect().top;
+    const p = range > 0 ? Math.min(1, Math.max(0, past) / range) : 0;
+    box.style.height = (tall - range * p) + 'px';
+    $('lp-gap').style.height = (range * p) + 'px'; // gives back the room the panel gave up, so the cards don't move
+    box.style.setProperty('--p', p.toFixed(3));
+    box.classList.toggle('slimmed', p > 0.6);
+  }
+  addEventListener('scroll', () => { if (!panelQueued) { panelQueued = true; requestAnimationFrame(squeezePanel); } }, { passive: true });
+  addEventListener('resize', setupPanel);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(setupPanel);
+
+  /* The "more" button: the list's less frequent actions */
+  function listMenu() {
+    const l = cur();
+    open(`<h2>${esc(l.name)}</h2><div class="menu">
+      <button class="btn" id="edit-list">Rename list</button>
+      <button class="btn" id="menu-copy">Copy guest link</button>
+      ${full(l) ? '<button class="btn" id="collab">Collaborators</button>' : ''}
+      <a class="btn" href="/l/${esc(l.slug)}" target="_blank" rel="noopener" data-close>Preview as guest</a>
+      ${full(l) ? '' : '<button class="btn danger" id="leave">Leave list</button>'}
+    </div><div class="actions"><button class="btn ghost" data-close>Close</button></div>`, sh => {
+      const on = (id, f) => { const e = sh.querySelector('#' + id); if (e) e.onclick = () => { close(); f(); }; };
+      on('edit-list', () => listForm(l));
+      on('menu-copy', copyLink);
+      on('collab', () => collabForm());
+      on('leave', () => { const l = cur(); confirmBox('Leave “' + l.name + '”?', 'You won’t see or edit this list any more. ' + l.owner + ' can add you again.', 'Leave list',
+      () => act(() => call('DELETE', `/api/admin/lists/${l.id}/collaborators/${l.collaborators.find(c => c.name === me).id}`), 'You left the list')); });
+    });
+  }
+
   function statusPill(it) {
     const r = resN(it), lf = leftOf(it);
     if (!r) return '<span class="pill ok">Available</span>';
@@ -80,13 +144,20 @@
       const taken = l.items.filter(i => leftOf(i) === 0).length, avail = l.items.length - taken;
       const shown = l.items.filter(i => filter === 'all' || (filter === 'taken' ? resN(i) > 0 : leftOf(i) > 0))
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })); // A–Z, like the guest page
-      h += `<section class="panel">
-        <div class="panel-head"><div><div class="eyebrow">Gift list${l.mine ? '' : ' · shared by ' + esc(l.owner)}</div><h2>${esc(l.name)}</h2>${others(l).length ? `<p class="hint">${l.mine || viewing ? 'Shared with' : 'Also shared with'} ${esc(others(l).join(', '))}</p>` : ''}</div>
-          <div class="share"><button class="btn ghost" id="edit-list">Rename</button><button class="btn primary" id="add-item">+ Add item</button></div></div>
-        <div class="stats"><span><b>${l.items.length}</b>items</span><span><b>${avail}</b>available</span><span><b>${taken}</b>reserved</span></div>
-        <div class="share"><button class="btn" id="copy-link">Copy guest link</button><a class="btn ghost" href="/l/${esc(l.slug)}" target="_blank" rel="noopener">Preview as guest</a>${full(l) ? '<button class="btn ghost" id="collab">Collaborators</button>' : '<button class="btn ghost" id="leave">Leave list</button>'}</div>
-        <div class="filters" role="group" aria-label="Filter">${['all', 'available', 'taken'].map(f => `<button class="chip" data-filter="${f}" aria-current="${filter === f}">${f === 'all' ? 'All' : f === 'available' ? 'Available' : 'Reserved'}</button>`).join('')}</div>
-      </section>`;
+      // Each filter button carries the number of gifts it shows
+      const counts = { all: l.items.length, available: avail, taken: l.items.filter(i => resN(i) > 0).length };
+      const linkIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>';
+      const eyeIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+      h += `<div id="lp-top"></div><div class="lp-stick"><section class="lpanel" id="lpanel">
+        <div class="lp-title"><div class="lp-eyebrow">${l.mine ? 'Gift list' : 'Shared by ' + esc(l.owner)}</div><h2>${esc(l.name)}</h2>${others(l).length ? `<p class="lp-with">${l.mine || viewing ? 'Shared with' : 'Also shared with'} ${esc(others(l).join(', '))}</p>` : ''}</div>
+        <button class="lp-more" id="more" aria-label="More actions for this list" aria-haspopup="dialog"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+        <button class="btn primary lp-add" id="add-item">+ Add item</button>
+        <div class="lp-rule"></div>
+        <div class="lp-filters" role="group" aria-label="Filter">${[['all', 'All'], ['available', 'Available'], ['taken', 'Reserved']].map(([f, t]) => `<button class="lp-chip" data-filter="${f}" aria-pressed="${filter === f}">${t} <b>${counts[f]}</b></button>`).join('')}</div>
+        <div class="lp-links"><button class="lp-link lp-copy" id="copy-link">${linkIcon}Copy guest link</button><a class="lp-link lp-preview" href="/l/${esc(l.slug)}" target="_blank" rel="noopener">${eyeIcon}Preview</a></div>
+        <div class="lp-slim" aria-hidden="true"><b>${esc(l.name)}</b></div>
+        <button class="lp-plus" id="add-plus" aria-label="Add item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      </section></div><div id="lp-gap"></div>`;
       if (!l.items.length) h += `<div class="empty"><h3>This list is empty</h3>Tap “Add item” to add the first gift: a name, price, shop link and photo.</div>`;
       else if (!shown.length) h += `<div class="empty">Nothing here for this filter.</div>`;
       else h += `<div class="grid">${shown.map(it => `<article class="card">${pic(it)}<div class="card-body">
@@ -99,6 +170,7 @@
     }
     app.innerHTML = h;
     bind();
+    setupPanel();
   }
 
   function bind() {
@@ -108,15 +180,10 @@
     on('theme', themePicker);
     on('nav', () => { view = view === 'users' ? 'lists' : 'users'; viewing = null; lists = []; pick(null); refresh().catch(e => toast(problem(e))); });
     on('new-list', () => listForm());
-    on('edit-list', () => listForm(cur()));
-    on('collab', () => collabForm());
-    on('leave', () => { const l = cur(); confirmBox('Leave “' + l.name + '”?', 'You won’t see or edit this list any more. ' + l.owner + ' can add you again.', 'Leave list',
-      () => act(() => call('DELETE', `/api/admin/lists/${l.id}/collaborators/${l.collaborators.find(c => c.name === me).id}`), 'You left the list')); });
+    on('more', listMenu);
     on('add-item', () => itemForm());
-    on('copy-link', () => {
-      const t = guestLink(cur());
-      try { navigator.clipboard.writeText(t).then(() => toast('Link copied'), () => showLink(t)); } catch (_) { showLink(t); }
-    });
+    on('add-plus', () => itemForm());
+    on('copy-link', copyLink);
     app.querySelectorAll('[data-list]').forEach(b => (b.onclick = () => { pick(Number(b.dataset.list)); filter = 'all'; render(); }));
     app.querySelectorAll('[data-filter]').forEach(b => (b.onclick = () => { filter = b.dataset.filter; render(); }));
     app.querySelectorAll('[data-edit]').forEach(b => (b.onclick = () => itemForm(item(b.dataset.edit))));

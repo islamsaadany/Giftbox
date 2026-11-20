@@ -120,11 +120,13 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .hbox{--p:0;position:relative;max-width:860px;margin:0 auto;overflow:hidden;background:var(--accent-soft);border-radius:calc(20px - 4px*var(--p));will-change:height}
 .hicon{position:absolute;left:calc(18px - 6px*var(--p));top:calc(18px - 10px*var(--p));width:calc(26px + 8px*var(--p));height:calc(26px + 8px*var(--p));z-index:1}
 .hicon svg{display:block;width:100%;height:100%}
-.hbig{position:absolute;top:0;left:0;right:0;padding:18px;display:grid;gap:12px;opacity:calc(1 - 1.7*var(--p));transform:translateY(calc(-16px*var(--p)))}
+/* A name too long to slide (see "m" below): the tall content fades out where it is, and is gone before the
+   slim line starts to appear, so the two names are never on screen together. */
+.hbig{position:absolute;top:0;left:0;right:0;padding:18px;display:grid;gap:12px;opacity:calc(1 - 2.4*var(--p))}
 .mark{display:flex;align-items:center;height:26px;padding-left:34px;font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.02em;color:var(--accent-deep)}
 .hbig h1{font-size:30px;line-height:1.1;overflow-wrap:anywhere}
 .hbig p{margin:4px 0 0;font-size:14px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
-.hslim{position:absolute;left:0;right:0;bottom:0;height:50px;padding:0 12px 0 56px;display:flex;align-items:center;gap:10px;pointer-events:none;opacity:calc(2.5*var(--p) - 1.2);transform:translateY(calc(10px - 10px*var(--p)))}
+.hslim{position:absolute;left:0;right:0;bottom:0;height:50px;padding:0 12px 0 56px;display:flex;align-items:center;gap:10px;pointer-events:none;opacity:calc(2.5*var(--p) - 1.125);transform:translateY(calc(10px - 10px*var(--p)))}
 /* "m": the name fits on one line, so it shrinks and slides into the slim position instead of fading.
    It moves sideways faster than it rises, so it clears the icon before coming level with it. */
 .hbox.m .hbig{opacity:1;transform:none}
@@ -143,6 +145,55 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .segsort{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:3px}
 .segsort button{border:0;background:none;border-radius:9px;padding:8px 4px;font-size:12px;font-weight:600;color:var(--muted)}
 .segsort button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+/* admin list panel: two rows on the app's soft colour. Name with "more" and Add item, then the filters
+   (each with its count) and the guest-link actions. On a phone, Add item drops down beside Copy guest link. */
+/* Collapsing: --p runs from 0 (tall) to 1 (slim row); admin.js sets it with the panel height as the page scrolls. */
+/* a little wider than the cards so their soft shadow doesn't peek out beside the pinned panel */
+.lp-stick{position:sticky;top:0;z-index:9;background:var(--bg);padding:max(8px,env(safe-area-inset-top,0px)) 6px 0;margin:-8px -6px 0}
+.lpanel{--p:0;overflow:hidden;align-content:start;position:relative;background:var(--accent-soft);border-radius:calc(20px - 4px*var(--p));padding:18px 20px;display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"title more add" "rule rule rule" "chips links links";gap:16px 8px;align-items:center}
+.lp-title{grid-area:title;min-width:0;display:grid;gap:2px}
+.lp-eyebrow{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-deep)}
+.lpanel h2{font-size:24px;line-height:1.15;overflow-wrap:anywhere}
+.lp-with{margin:2px 0 0;font-size:12px;color:var(--muted)}
+.lp-more{grid-area:more;justify-self:end;width:40px;height:40px;display:grid;place-items:center;border:0;border-radius:999px;background:var(--surface);color:var(--ink)}
+.lp-add{grid-area:add;height:40px;padding:0 16px;border-radius:999px}
+.lp-rule{grid-area:rule;height:1px;background:var(--accent);opacity:.22}
+.lp-filters{grid-area:chips;display:flex;gap:6px;flex-wrap:wrap}
+.lp-chip{border:0;border-radius:999px;background:var(--surface);color:var(--muted);font-size:13px;font-weight:600;padding:6px 12px}
+.lp-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.lp-chip[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.lp-chip[aria-pressed="true"] b{color:inherit}
+.lp-links{grid-area:links;justify-self:end;display:flex;gap:6px}
+.lp-link{display:flex;align-items:center;gap:6px;border:0;background:none;border-radius:10px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--accent-deep);text-decoration:none}
+@media (max-width:599px){
+  .lpanel{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"title title" "chips chips" "copy add";padding:16px;gap:14px 8px}
+  .lp-title{padding-right:48px}
+  .lpanel h2{font-size:21px}
+  .lp-more{position:absolute;top:16px;right:16px}
+  .lp-rule,.lp-preview{display:none}
+  .lp-links{display:contents}
+  .lp-copy{grid-area:copy;justify-content:center;height:42px;border-radius:999px;background:var(--surface);color:var(--ink);font-size:14px}
+  .lp-copy svg{display:none}
+  .lp-add{height:42px}
+}
+.lp-eyebrow,.lp-with,.lp-rule,.lp-links,.lp-filters,.lpanel:not(.m) h2{opacity:calc(1 - 2.4*var(--p))}
+/* "m": the name is one line and fits the slim row, so it shrinks and slides there instead of fading */
+.lpanel.m h2{width:max-content;white-space:nowrap;transform-origin:0 0;transform:translateY(calc(var(--ndy,0px)*var(--p))) scale(calc(1 - .2083*var(--p)))}
+.lp-slim{position:absolute;top:0;left:20px;right:var(--rsv,120px);height:56px;display:flex;align-items:center;pointer-events:none;opacity:calc(2.5*var(--p) - 1.125)}
+.lp-slim b{font-family:var(--display);font-size:19px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lpanel.m .lp-slim{display:none}
+.lp-more{transform:translateY(calc(var(--mdy,0px)*var(--p)))}
+.lp-add{transform:translateY(calc(var(--ady,0px)*var(--p)))}
+.lp-plus{display:none}
+@media (max-width:599px){
+  .lp-slim{left:16px}
+  .lp-add{transform:none}
+  .lp-add,.lp-copy{opacity:calc(1 - 2.4*var(--p))}
+  .lp-plus{display:grid;place-items:center;position:absolute;top:8px;right:64px;width:40px;height:40px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-ink);opacity:calc(2.5*var(--p) - 1.125);pointer-events:none}
+  .lpanel.slimmed .lp-plus{pointer-events:auto}
+}
+.menu{display:grid;gap:8px}
+.menu .btn{text-align:left;padding:12px 14px}
 /* cards, on the guest and the admin page: soft, with the price as the main line */
 .guest .grid{margin-top:2px}
 .card{border:0;border-radius:18px;padding:8px;gap:8px;overflow:visible;box-shadow:0 1px 3px rgb(33 31 54 / .08)}
