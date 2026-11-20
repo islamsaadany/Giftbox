@@ -71,6 +71,17 @@ test('guests see available items only, and no reservation details', async () => 
   for (const secret of ['Sara', 'Omar', '0101', '0119', 'reservations', 'qty']) assert.ok(!raw.includes(secret), secret);
 });
 
+test('admins are told the public address for guest links', async () => {
+  const app = createApp({ db, photos: openPhotos({ dir: path.join(dataDir, 'photos') }), admins: [{ name: 'Alaa', password: 'correct horse' }, { name: 'Islam', password: 'second pass' }], publicUrl: 'https://gifts.example.com/' });
+  const s = app.listen(0);
+  try {
+    const at = 'http://127.0.0.1:' + s.address().port;
+    assert.equal((await (await fetch(at + '/api/admin/me')).json()).publicUrl, '');
+    const r = await (await fetch(at + '/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Alaa', password: 'correct horse' }) })).json();
+    assert.equal(r.publicUrl, 'https://gifts.example.com');
+  } finally { s.close(); }
+});
+
 test('cannot reserve more than is left', async () => {
   const over = await call('POST', `/api/l/${slug}/items/${diapers}/reserve`, { name: 'Mona', mobile: '01000000000', count: 8 }, { auth: false });
   assert.equal(over.status, 409);
@@ -141,7 +152,7 @@ test('admins create the users, and each user sees only their own lists', async (
   assert.equal((await call('POST', '/api/admin/login', { name: 'Temp', password: 'long enough' })).status, 401);
   assert.equal((await call('POST', '/api/admin/login', { name: 'Mona', password: 'first pass' })).status, 401);
   assert.equal((await call('POST', '/api/admin/login', { name: 'Mona', password: 'long enough' })).status, 200);
-  assert.deepEqual((await call('GET', '/api/admin/me')).body, { admin: true, name: 'Mona', theme: 'pink', isAdmin: false });
+  assert.deepEqual((await call('GET', '/api/admin/me')).body, { admin: true, name: 'Mona', theme: 'pink', isAdmin: false, publicUrl: '' });
   // each user picks their own colour, and their guests see it
   assert.equal((await call('PATCH', '/api/admin/me', { theme: 'red; }' })).status, 400);
   assert.equal((await call('PATCH', '/api/admin/me', { theme: 'blue' })).status, 200);
