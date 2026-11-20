@@ -172,7 +172,40 @@ test('admins create the users, and each user sees only their own lists', async (
   assert.equal((await call('POST', '/api/admin/login', { name: 'mona', password: 'long enough' })).status, 200);
   assert.deepEqual((await call('GET', '/api/admin/lists')).body.lists.map(l => l.name), ['Mona list']);
 
+  // Mona shares her list with Alaa, who can then edit it but not delete it or choose collaborators
+  const share = `/api/admin/lists/${mine}/collaborators`;
+  assert.equal((await call('POST', share, { name: 'Nobody' })).status, 404);
+  assert.equal((await call('POST', share, { name: 'Mona' })).status, 400);
+  const added = await call('POST', share, { name: ' alaa ' });
+  assert.deepEqual([added.status, added.body.name], [201, 'Alaa']);
+  assert.equal((await call('POST', share, { name: 'Alaa' })).status, 201); // adding twice is fine
+  assert.equal((await call('POST', `/api/admin/lists/${theirs}/collaborators`, { name: 'Mona' })).status, 404); // not her list
+  const monaCookie = cookie;
   cookie = alaaCookie;
+  const shared = (await call('GET', '/api/admin/lists')).body.lists.find(x => x.id === mine);
+  assert.deepEqual([shared.mine, shared.owner, shared.collaborators.map(c => c.name)], [false, 'Mona', ['Alaa']]);
+  assert.equal((await call('PATCH', '/api/admin/lists/' + mine, { name: 'Mona list' })).status, 200);
+  const gift = (await call('POST', `/api/admin/lists/${mine}/items`, { name: 'Blanket' })).body.id;
+  assert.equal((await call('PATCH', '/api/admin/items/' + gift, { qty: 2 })).status, 200);
+  await call('POST', `/api/l/${shared.slug}/items/${gift}/reserve`, { name: 'Hana', mobile: '01033334444' }, { auth: false });
+  const hana = (await call('GET', '/api/admin/lists')).body.lists.find(x => x.id === mine).items[0].reservations[0];
+  assert.equal(hana.name, 'Hana');
+  assert.equal((await call('DELETE', '/api/admin/reservations/' + hana.id)).status, 200);
+  assert.equal((await call('DELETE', '/api/admin/items/' + gift)).status, 200);
+  assert.equal((await call('DELETE', '/api/admin/lists/' + mine)).status, 404);
+  assert.equal((await call('POST', share, { name: 'Islam' })).status, 404);
+  const alaaId = shared.collaborators[0].id;
+  cookie = monaCookie;
+  assert.equal((await call('GET', '/api/admin/lists')).body.lists.find(x => x.id === mine).mine, true);
+  assert.equal((await call('DELETE', `${share}/${alaaId}`)).status, 200);
+  cookie = alaaCookie;
+  assert.equal((await call('PATCH', '/api/admin/lists/' + mine, { name: 'Still mine?' })).status, 404);
+  // a collaborator can also leave on their own
+  cookie = monaCookie;
+  await call('POST', share, { name: 'Alaa' });
+  cookie = alaaCookie;
+  assert.equal((await call('DELETE', `${share}/${alaaId}`)).status, 200);
+  assert.ok(!(await call('GET', '/api/admin/lists')).body.lists.some(x => x.id === mine));
   // the admin can look at a user's lists
   const seen = await call('GET', `/api/admin/users/${mona.body.id}/lists`);
   assert.deepEqual([seen.status, seen.body.name, seen.body.lists.map(x => x.name)], [200, 'Mona', ['Mona list']]);

@@ -8,6 +8,8 @@
   const leftOf = it => Math.max(0, it.qty - resN(it));
   const priceLine = it => it.price === null ? '' : it.qty > 1 ? `${money(it.price)} <span class="each">each</span>` : money(it.price);
   const cur = () => lists.find(l => l.id === listId);
+  // The list's collaborators by name, without the signed-in user
+  const others = l => l.collaborators.map(c => c.name).filter(n => viewing || n !== me);
   const guestLink = l => location.origin + '/l/' + l.slug;
   const pick = id => { listId = id; try { sessionStorage.setItem('wb.list', id); } catch (_) {} };
   let me = '', theme = 'pink', isAdmin = false, view = 'lists', users = [];
@@ -74,10 +76,10 @@
       const taken = l.items.filter(i => leftOf(i) === 0).length, avail = l.items.length - taken;
       const shown = l.items.filter(i => filter === 'all' || (filter === 'taken' ? resN(i) > 0 : leftOf(i) > 0));
       h += `<section class="panel">
-        <div class="panel-head"><div><div class="eyebrow">Gift list</div><h2>${esc(l.name)}</h2></div>
+        <div class="panel-head"><div><div class="eyebrow">Gift list${l.mine ? '' : ' · shared by ' + esc(l.owner)}</div><h2>${esc(l.name)}</h2>${others(l).length ? `<p class="hint">${l.mine || viewing ? 'Shared with' : 'Also shared with'} ${esc(others(l).join(', '))}</p>` : ''}</div>
           ${viewing ? '' : '<div class="share"><button class="btn ghost" id="edit-list">Rename</button><button class="btn primary" id="add-item">+ Add item</button></div>'}</div>
         <div class="stats"><span><b>${l.items.length}</b>items</span><span><b>${avail}</b>available</span><span><b>${taken}</b>reserved</span></div>
-        <div class="share"><button class="btn" id="copy-link">Copy guest link</button><a class="btn ghost" href="/l/${esc(l.slug)}" target="_blank" rel="noopener">Preview as guest</a></div>
+        <div class="share"><button class="btn" id="copy-link">Copy guest link</button><a class="btn ghost" href="/l/${esc(l.slug)}" target="_blank" rel="noopener">Preview as guest</a>${viewing ? '' : l.mine ? '<button class="btn ghost" id="collab">Collaborators</button>' : '<button class="btn ghost" id="leave">Leave list</button>'}</div>
         <div class="filters" role="group" aria-label="Filter">${['all', 'available', 'taken'].map(f => `<button class="chip" data-filter="${f}" aria-current="${filter === f}">${f === 'all' ? 'All' : f === 'available' ? 'Available' : 'Reserved'}</button>`).join('')}</div>
       </section>`;
       if (!l.items.length) h += viewing ? `<div class="empty"><h3>This list is empty</h3>No gifts have been added yet.</div>` : `<div class="empty"><h3>This list is empty</h3>Tap “Add item” to add the first gift: a name, price, shop link and photo.</div>`;
@@ -102,6 +104,9 @@
     on('nav', () => { view = view === 'users' ? 'lists' : 'users'; viewing = null; lists = []; pick(null); refresh().catch(e => toast(problem(e))); });
     on('new-list', () => listForm());
     on('edit-list', () => listForm(cur()));
+    on('collab', () => collabForm());
+    on('leave', () => { const l = cur(); confirmBox('Leave “' + l.name + '”?', 'You won’t see or edit this list any more. ' + l.owner + ' can add you again.', 'Leave list',
+      () => act(() => call('DELETE', `/api/admin/lists/${l.id}/collaborators/${l.collaborators.find(c => c.name === me).id}`), 'You left the list')); });
     on('add-item', () => itemForm());
     on('copy-link', () => {
       const t = guestLink(cur());
@@ -141,7 +146,7 @@
   function renderUsers() {
     app.innerHTML = top(true) + `<section class="panel">
       <div class="panel-head"><div><div class="eyebrow">Admin</div><h2>Users</h2></div><button class="btn primary" id="add-user">+ Add user</button></div>
-      <p class="hint">Create a username and password for each person, then send them both. Each person sees only their own lists; you can look at anyone’s with “Lists”.</p>
+      <p class="hint">Create a username and password for each person, then send them both. Each person sees only their own lists and the ones shared with them; you can look at anyone’s with “Lists”.</p>
       <div class="user-list">${users.map(u => `<div class="user"><div><strong>${esc(u.name)}</strong>${u.admin ? ' <span class="pill ok">Admin</span>' : ''}<span>${u.lists} ${u.lists === 1 ? 'list' : 'lists'}</span></div><div class="share"><button class="btn" data-lists="${u.id}">Lists</button><button class="btn" data-user="${u.id}">Manage</button></div></div>`).join('')}</div>
     </section>`;
     bind();
@@ -205,7 +210,7 @@
       <div class="field"><label for="ln">List name</label><input id="ln" maxlength="60" placeholder="e.g. Birthday 2027" value="${esc(l?.name || '')}"></div>
       <div class="field"><label for="lnote">Message to guests <i>(optional)</i></label><input id="lnote" maxlength="160" value="${esc(l?.note || '')}"></div>
       <div class="err" id="le" role="alert"></div>
-      <div class="actions">${l ? '<button type="button" class="btn danger left" id="ldel">Delete list</button>' : ''}<button type="button" class="btn ghost" data-close>Cancel</button><button class="btn primary" id="lgo">${l ? 'Save' : 'Create list'}</button></div>
+      <div class="actions">${l?.mine ? '<button type="button" class="btn danger left" id="ldel">Delete list</button>' : ''}<button type="button" class="btn ghost" data-close>Cancel</button><button class="btn primary" id="lgo">${l ? 'Save' : 'Create list'}</button></div>
     </form>`, () => {
       $('lf').onsubmit = e => {
         e.preventDefault();
@@ -222,6 +227,37 @@
       const d = $('ldel');
       if (d) d.onclick = () => confirmBox('Delete “' + l.name + '”?', 'The list, its items and all reservations will be removed. Guests with the link will no longer see it.', 'Delete list',
         () => act(() => call('DELETE', '/api/admin/lists/' + l.id), 'List deleted'));
+    });
+  }
+
+  /* The owner chooses who else can edit the current list, by username */
+  function collabForm() {
+    const l = cur();
+    open(`<h2>Collaborators</h2><p>People you add can see “${esc(l.name)}”, its reservations, and add or edit its gifts. Only you can delete the list.</p>
+      ${l.collaborators.length ? `<div class="user-list">${l.collaborators.map(c => `<div class="user"><div><strong>${esc(c.name)}</strong></div><button type="button" class="btn" data-remove="${c.id}">Remove</button></div>`).join('')}</div>` : ''}
+      <form id="cf2" novalidate>
+        <div class="field"><label for="cn">Add by username</label><input id="cn" maxlength="30" autocomplete="off" autocapitalize="words"></div>
+        <div class="err" id="ce" role="alert"></div>
+        <div class="actions"><button type="button" class="btn ghost" data-close>Done</button><button class="btn primary" id="cgo">Add</button></div>
+      </form>`, sh => {
+      // After a change, show the sheet again with the new list of people
+      const again = async msg => { await refresh(); toast(msg); if (cur()?.id === l.id) collabForm(); else close(); };
+      $('cf2').onsubmit = e => {
+        e.preventDefault();
+        const name = $('cn').value.trim();
+        if (!name) { $('ce').textContent = 'Type the person’s username.'; return; }
+        busy($('cgo'), async () => {
+          try { const r = await call('POST', `/api/admin/lists/${l.id}/collaborators`, { name }); await again(r.name + ' can now edit this list'); }
+          catch (x) {
+            if ($('ce')) $('ce').textContent = x.code === 'no_such_user' ? 'There’s no user with that username.'
+              : x.code === 'is_owner' ? 'That’s you: it’s already your list.' : problem(x);
+          }
+        });
+      };
+      sh.querySelectorAll('[data-remove]').forEach(b => (b.onclick = () => busy(b, async () => {
+        try { await call('DELETE', `/api/admin/lists/${l.id}/collaborators/${b.dataset.remove}`); await again('Removed'); }
+        catch (x) { if (x.status !== 401 && $('ce')) $('ce').textContent = problem(x); }
+      })));
     });
   }
 
