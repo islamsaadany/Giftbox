@@ -84,20 +84,21 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .empty{text-align:center;padding:36px 16px;color:var(--muted);border:1.5px dashed var(--line);border-radius:var(--r);margin-top:16px}
 .empty h3{color:var(--ink);font-size:18px;margin-bottom:4px}
 
-/* guest list page: a welcome banner that gives way to a slim bar when you scroll, with the sort buttons pinned under it */
-.banner{background:var(--accent-soft);border-radius:20px;padding:18px;display:grid;gap:12px;margin-top:max(12px,env(safe-area-inset-top,0px))}
-.mark{display:flex;align-items:center;gap:8px;font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.02em;color:var(--accent-deep)}
-.mark svg{width:26px;height:26px;flex:none}
-.banner h1{font-size:30px;line-height:1.1;overflow-wrap:anywhere}
-.banner p{margin:4px 0 0;font-size:14px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
-.slim{position:fixed;top:0;left:0;right:0;z-index:11;background:var(--bg);padding:max(8px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px));opacity:0;visibility:hidden}
-.slim.on{opacity:1;visibility:visible}
-.slim-in{max-width:860px;margin:0 auto;background:var(--accent-soft);border-radius:16px;padding:8px 12px;display:flex;align-items:center;gap:10px}
-.slim-in svg{width:34px;height:34px;flex:none}
-.slim .t{flex:1;min-width:0;display:grid}
-.slim .t small{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-deep)}
-.slim .t b{font-family:var(--display);font-size:19px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.slim .n{flex:none;font-size:12px;font-weight:600;color:var(--accent-deep);background:var(--surface);padding:5px 10px;border-radius:999px}
+/* guest list page: one pink header that is squeezed from a welcome banner into a slim bar as the page scrolls.
+   --p runs from 0 (tall) to 1 (slim) and is set by guest.js together with the box height. */
+.hdr{position:fixed;top:0;left:0;right:0;z-index:11;background:var(--bg);padding:max(8px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px))}
+.hbox{--p:0;position:relative;max-width:860px;margin:0 auto;overflow:hidden;background:var(--accent-soft);border-radius:calc(20px - 4px*var(--p));will-change:height}
+.hicon{position:absolute;left:calc(18px - 6px*var(--p));top:calc(18px - 10px*var(--p));width:calc(26px + 8px*var(--p));height:calc(26px + 8px*var(--p));z-index:1}
+.hicon svg{display:block;width:100%;height:100%}
+.hbig{position:absolute;top:0;left:0;right:0;padding:18px;display:grid;gap:12px;opacity:calc(1 - 1.7*var(--p));transform:translateY(calc(-16px*var(--p)))}
+.mark{display:flex;align-items:center;height:26px;padding-left:34px;font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.02em;color:var(--accent-deep)}
+.hbig h1{font-size:30px;line-height:1.1;overflow-wrap:anywhere}
+.hbig p{margin:4px 0 0;font-size:14px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
+.hslim{position:absolute;left:0;right:0;bottom:0;height:50px;padding:0 12px 0 56px;display:flex;align-items:center;gap:10px;pointer-events:none;opacity:calc(2.5*var(--p) - 1.2);transform:translateY(calc(10px - 10px*var(--p)))}
+.hslim .t{flex:1;min-width:0;display:grid}
+.hslim .t small{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-deep)}
+.hslim .t b{font-family:var(--display);font-size:19px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hslim .n{flex:none;font-size:12px;font-weight:600;color:var(--accent-deep);background:var(--surface);padding:5px 10px;border-radius:999px}
 /* a little wider than the cards so their soft shadow doesn't peek out beside the pinned bar */
 .sortwrap{position:sticky;top:var(--slim-h,0px);z-index:10;background:var(--bg);padding:10px 6px 8px;margin-inline:-6px}
 .segsort{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:3px}
