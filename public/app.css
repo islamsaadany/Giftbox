@@ -194,6 +194,9 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
   body:has(.bbar){padding-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
   body:has(.bbar) .toast{bottom:calc(80px + env(safe-area-inset-bottom,0px))}
 }
+.linkrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+.linkrow .btn{flex:none}
+.linkrow .hint{flex:1;min-width:160px}
 .menu{display:grid;gap:8px}
 .menu .btn{text-align:left;padding:12px 14px}
 .menu .btn.ic{display:flex;align-items:center;gap:12px}

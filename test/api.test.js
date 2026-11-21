@@ -294,6 +294,29 @@ test('too many wrong passwords locks sign-in for a while', async () => {
   assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' })).status, 429);
 });
 
+test('the item form can read a shop link, for signed-in users only', async () => {
+  const seen = [];
+  const reader = async link => {
+    seen.push(link);
+    if (link.includes('private')) throw Object.assign(new Error('bad_link'), { code: 'bad_link' });
+    if (link.includes('down')) throw Object.assign(new Error('unreachable'), { code: 'unreachable' });
+    return { image: JPEG, price: 480, currency: 'EGP', title: 'Diapers' };
+  };
+  const s4 = await new Promise(r => { const s = createApp({ db, linkInfo: reader, photos: openPhotos({ dir: path.join(dataDir, 'photos') }), admins: [{ name: 'Alaa', password: 'correct horse' }] }).listen(0, () => r(s)); });
+  const old = base; base = 'http://127.0.0.1:' + s4.address().port;
+  try {
+    assert.equal((await call('POST', '/api/admin/link-info', { url: 'https://shop.example/d' }, { auth: false })).status, 401);
+    await db.query('DELETE FROM login_failures');
+    assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' })).status, 200);
+    const r = await call('POST', '/api/admin/link-info', { url: ' https://shop.example/d ' });
+    assert.deepEqual([r.status, r.body], [200, { image: JPEG, price: 480, currency: 'EGP', title: 'Diapers' }]);
+    assert.deepEqual(seen, ['https://shop.example/d']);
+    assert.equal((await call('POST', '/api/admin/link-info', {})).status, 400);
+    assert.equal((await call('POST', '/api/admin/link-info', { url: 'http://private/' })).status, 400);
+    assert.equal((await call('POST', '/api/admin/link-info', { url: 'https://down.example/' })).status, 422);
+  } finally { base = old; s4.close(); }
+});
+
 test('the app can ask which version is deployed', async () => {
   const v = await call('GET', '/api/version', null, { auth: false });
   assert.equal(v.status, 200);
