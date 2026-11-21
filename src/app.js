@@ -205,7 +205,7 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInf
     }
     await db.query('DELETE FROM login_failures WHERE ip = $1 OR at < $2', [ip, now - LOGIN_WINDOW_MS]);
     await startSession(req, res, user);
-    res.json({ ok: true, name: user.name, theme: user.theme, isAdmin: adminKeys.has(key), publicUrl });
+    res.json({ ok: true, name: user.name, isAdmin: adminKeys.has(key), publicUrl });
   });
 
   app.post('/api/admin/logout', async (req, res) => {
@@ -217,7 +217,7 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInf
 
   app.get('/api/admin/me', async (req, res) => {
     const user = await userOf(req);
-    res.set('Cache-Control', 'no-store').json({ admin: !!user, name: user ? user.name : null, theme: user ? user.theme : 'pink', isAdmin: !!user?.admin, publicUrl: user ? publicUrl : '' });
+    res.set('Cache-Control', 'no-store').json({ admin: !!user, name: user ? user.name : null, isAdmin: !!user?.admin, publicUrl: user ? publicUrl : '' });
   });
 
   /* Everything below is limited to lists the signed-in user owns or was added to as a collaborator.
@@ -253,17 +253,10 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInf
     }
   });
 
-  // The user's colour theme, also used on their guest pages
-  admin.patch('/me', async (req, res) => {
-    if (!THEMES.includes(req.body?.theme)) throw bad('bad_theme');
-    await db.query('UPDATE users SET theme = $1 WHERE id = $2', [req.body.theme, req.user.id]);
-    res.json({ ok: true });
-  });
-
   // The lists a user owns or collaborates on, with their items and reservations
   async function listsOf(userId) {
     const [lists, items, resv, collabs] = await Promise.all([
-      rows(`SELECT l.id, l.slug, l.name, l.note, l.user_id, o.name AS owner FROM lists l LEFT JOIN users o ON o.id = l.user_id WHERE ${can(1)} ORDER BY l.created_at, l.id`, [userId]),
+      rows(`SELECT l.id, l.slug, l.name, l.note, l.theme, l.user_id, o.name AS owner FROM lists l LEFT JOIN users o ON o.id = l.user_id WHERE ${can(1)} ORDER BY l.created_at, l.id`, [userId]),
       rows(`SELECT i.id, i.list_id, i.name, i.price_egp, i.quantity, i.shop_url, i.photo FROM items i JOIN lists l ON l.id = i.list_id WHERE ${can(1)} ORDER BY i.id DESC`, [userId]),
       rows(`SELECT r.id, r.item_id, r.guest_name, r.guest_mobile, r.count, r.created_at FROM reservations r
             JOIN items i ON i.id = r.item_id JOIN lists l ON l.id = i.list_id WHERE ${can(1)} ORDER BY r.created_at, r.id`, [userId]),
@@ -275,7 +268,7 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInf
       byItem.get(r.item_id).push({ id: r.id, name: r.guest_name, mobile: r.guest_mobile, count: r.count, at: Number(r.created_at) });
     }
     return lists.map(l => ({
-      id: l.id, slug: l.slug, name: l.name, note: l.note, owner: l.owner || '', mine: l.user_id === userId,
+      id: l.id, slug: l.slug, name: l.name, note: l.note, theme: l.theme || 'pink', owner: l.owner || '', mine: l.user_id === userId,
       collaborators: collabs.filter(c => c.list_id === l.id).map(c => ({ id: c.id, name: c.name })),
       items: items.filter(i => i.list_id === l.id).map(i => ({
         id: i.id, name: i.name, price: i.price_egp, qty: i.quantity, link: i.shop_url || '', photo: photos.url(i.photo),
@@ -288,8 +281,8 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInf
   admin.post('/lists', async (req, res) => {
     const name = text(req.body?.name, 60, 'bad_name', true), note = text(req.body?.note, 160, 'bad_note');
     for (let attempt = 0; attempt < 5; attempt++) {
-      const r = await one('INSERT INTO lists (slug, name, note, created_at, user_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (slug) DO NOTHING RETURNING id',
-        [newSlug(), name, note, Date.now(), req.user.id]);
+      const r = await one('INSERT INTO lists (slug, name, note, created_at, user_id, theme) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (slug) DO NOTHING RETURNING id',
+        [newSlug(), name, note, Date.now(), req.user.id, 'pink']);
       if (r) return res.status(201).json({ id: r.id });
     }
     throw new Error('could not make a unique slug');
@@ -298,6 +291,14 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInf
   admin.patch('/lists/:id', async (req, res) => {
     const name = text(req.body?.name, 60, 'bad_name', true), note = text(req.body?.note, 160, 'bad_note');
     const r = await db.query(`UPDATE lists l SET name = $1, note = $2 WHERE l.id = $3 AND ${may(4, req)}`, [name, note, idParam(req.params.id), req.user.id]);
+    if (!r.count) throw new HttpError(404, 'not_found');
+    res.json({ ok: true });
+  });
+
+  // The list's colour, used on its admin page and on the guest page. Anyone who can edit the list can change it.
+  admin.patch('/lists/:id/theme', async (req, res) => {
+    if (!THEMES.includes(req.body?.theme)) throw bad('bad_theme');
+    const r = await db.query(`UPDATE lists l SET theme = $1 WHERE l.id = $2 AND ${may(3, req)}`, [req.body.theme, idParam(req.params.id), req.user.id]);
     if (!r.count) throw new HttpError(404, 'not_found');
     res.json({ ok: true });
   });
@@ -435,7 +436,7 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInf
 
   app.get('/api/l/:slug', async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    const l = slugOk(req.params.slug) && (await one('SELECT l.id, l.name, l.note, u.theme FROM lists l LEFT JOIN users u ON u.id = l.user_id WHERE l.slug = $1', [req.params.slug]));
+    const l = slugOk(req.params.slug) && (await one('SELECT l.id, l.name, l.note, l.theme FROM lists l WHERE l.slug = $1', [req.params.slug]));
     if (!l) throw new HttpError(404, 'not_found');
     const items = await rows(`
       SELECT i.id, i.name, i.price_egp, i.quantity, i.shop_url, i.photo,

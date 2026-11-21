@@ -19,6 +19,10 @@ const SCHEMA = `
   );
   ALTER TABLE lists ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
   CREATE INDEX IF NOT EXISTS lists_user ON lists(user_id);
+  -- Each list has its own colour. Lists from when the colour belonged to the user keep the colour their owner had;
+  -- new lists are created with a colour, so this only ever touches those older rows.
+  ALTER TABLE lists ADD COLUMN IF NOT EXISTS theme TEXT;
+  UPDATE lists SET theme = COALESCE((SELECT u.theme FROM users u WHERE u.id = lists.user_id), 'pink') WHERE theme IS NULL;
   CREATE TABLE IF NOT EXISTS list_collaborators (
     list_id INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

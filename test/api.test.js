@@ -153,15 +153,19 @@ test('admins create the users, and each user sees only their own lists', async (
   assert.equal((await call('POST', '/api/admin/login', { name: 'Temp', password: 'long enough' })).status, 401);
   assert.equal((await call('POST', '/api/admin/login', { name: 'Mona', password: 'first pass' })).status, 401);
   assert.equal((await call('POST', '/api/admin/login', { name: 'Mona', password: 'long enough' })).status, 200);
-  assert.deepEqual((await call('GET', '/api/admin/me')).body, { admin: true, name: 'Mona', theme: 'pink', isAdmin: false, publicUrl: '' });
-  // each user picks their own colour, and their guests see it
-  assert.equal((await call('PATCH', '/api/admin/me', { theme: 'red; }' })).status, 400);
-  assert.equal((await call('PATCH', '/api/admin/me', { theme: 'blue' })).status, 200);
-  assert.equal((await call('GET', '/api/admin/me')).body.theme, 'blue');
+  assert.deepEqual((await call('GET', '/api/admin/me')).body, { admin: true, name: 'Mona', isAdmin: false, publicUrl: '' });
+  // each list has its own colour, and its guests see it; other lists keep theirs
   const blueList = (await call('POST', '/api/admin/lists', { name: 'Blue list' })).body.id;
-  const blueSlug = (await call('GET', '/api/admin/lists')).body.lists.find(l => l.id === blueList).slug;
+  const pinkList = (await call('POST', '/api/admin/lists', { name: 'Pink list' })).body.id;
+  assert.equal((await call('PATCH', `/api/admin/lists/${blueList}/theme`, { theme: 'red; }' })).status, 400);
+  assert.equal((await call('PATCH', `/api/admin/lists/${blueList}/theme`, { theme: 'blue' })).status, 200);
+  const colourLists = (await call('GET', '/api/admin/lists')).body.lists;
+  assert.deepEqual([colourLists.find(l => l.id === blueList).theme, colourLists.find(l => l.id === pinkList).theme], ['blue', 'pink']);
+  const blueSlug = colourLists.find(l => l.id === blueList).slug, pinkSlug = colourLists.find(l => l.id === pinkList).slug;
   assert.equal((await call('GET', '/api/l/' + blueSlug, null, { auth: false })).body.theme, 'blue');
+  assert.equal((await call('GET', '/api/l/' + pinkSlug, null, { auth: false })).body.theme, 'pink');
   assert.equal((await call('GET', '/api/l/' + theirSlug, null, { auth: false })).body.theme, 'pink');
+  await call('DELETE', '/api/admin/lists/' + pinkList);
   await call('DELETE', '/api/admin/lists/' + blueList);
   // a user can't manage users or look at someone else's lists
   assert.equal((await call('GET', `/api/admin/users/${all[0].id}/lists`)).status, 403);

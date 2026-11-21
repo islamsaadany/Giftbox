@@ -16,9 +16,9 @@
   let publicUrl = '';
   const guestLink = l => (publicUrl || location.origin) + '/l/' + l.slug;
   const pick = id => { listId = id; try { sessionStorage.setItem('wb.list', id); } catch (_) {} };
-  let me = '', theme = 'pink', isAdmin = false, view = 'lists', users = [];
+  let me = '', isAdmin = false, view = 'lists', users = [];
   let viewing = null; // admin working in another user's lists: { id, name }
-  const top = signedIn => `<header class="top"><div class="brand">${logo}Wishbox</div>${signedIn ? `<div class="share">${isAdmin ? `<button class="link-btn" id="nav">${view === 'users' ? 'My lists' : viewing ? 'Back to users' : 'Users'}</button>` : ''}<button class="link-btn" id="theme">Colour</button><button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button></div>` : ''}</header>`;
+  const top = signedIn => `<header class="top"><div class="brand">${logo}Wishbox</div>${signedIn ? `<div class="share">${isAdmin ? `<button class="link-btn" id="nav">${view === 'users' ? 'My lists' : viewing ? 'Back to users' : 'Users'}</button>` : ''}<button class="link-btn" id="logout">${me ? esc(me) + ' · ' : ''}Sign out</button></div>` : ''}</header>`;
 
   /* Any admin call can find the session expired: go back to the login screen */
   async function call(method, url, body) {
@@ -30,7 +30,7 @@
     try {
       const r = await api('GET', '/api/admin/me');
       if (!r.admin) return login();
-      me = r.name; isAdmin = r.isAdmin; theme = setTheme(r.theme); publicUrl = r.publicUrl || '';
+      me = r.name; isAdmin = r.isAdmin; publicUrl = r.publicUrl || '';
       await refresh();
     } catch (e) { app.innerHTML = top(false) + `<div class="empty"><h3>Couldn't load</h3>${esc(problem(e))}</div>`; }
   }
@@ -48,7 +48,7 @@
       busy($('lgo'), async () => {
         try {
           const r = await api('POST', '/api/admin/login', { name: $('un').value, password: $('pw').value });
-          me = r.name; isAdmin = r.isAdmin; theme = setTheme(r.theme); publicUrl = r.publicUrl || ''; filter = 'all';
+          me = r.name; isAdmin = r.isAdmin; publicUrl = r.publicUrl || ''; filter = 'all';
           await refresh();
         } catch (x) { const el = $('lge'); if (el) el.textContent = x.code === 'wrong_login' ? 'That username or password isn’t right.' : problem(x); }
       });
@@ -131,6 +131,7 @@
     const icons = {
       swap: ic('<path d="M7 4L3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7"/>'),
       pen: ic('<path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/>'),
+      drop: ic('<path d="M12 3.5c3.2 3.6 6 6.8 6 10.2a6 6 0 0 1-12 0c0-3.4 2.8-6.6 6-10.2z"/>'),
       people: ic('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.4c2.1.8 3.5 2.8 3.5 5.6"/>'),
       eye: ic('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
       plus: ic('<path d="M12 5v14M5 12h14"/>'),
@@ -139,6 +140,7 @@
     open(`<h2>${esc(l.name)}</h2><div class="menu">
       ${lists.length > 1 ? `<button class="btn ic" id="menu-switch">${icons.swap}Switch list</button>` : ''}
       <button class="btn ic" id="edit-list">${icons.pen}Rename list</button>
+      <button class="btn ic" id="menu-colour">${icons.drop}List colour</button>
       ${full(l) ? `<button class="btn ic" id="collab">${icons.people}Collaborators</button>` : ''}
       <a class="btn ic" href="/l/${esc(l.slug)}#preview"${previewTab()} data-close>${icons.eye}Preview as guest</a>
       ${viewing ? '' : `<button class="btn ic" id="menu-new">${icons.plus}New list</button>`}
@@ -146,6 +148,7 @@
     </div><div class="actions"><button class="btn ghost" data-close>Close</button></div>`, sh => {
       const on = (id, f) => { const e = sh.querySelector('#' + id); if (e) e.onclick = () => { close(); f(); }; };
       on('edit-list', () => listForm(l));
+      on('menu-colour', () => themePicker(l));
       on('menu-switch', listSwitcher);
       on('menu-new', () => listForm());
       on('collab', () => collabForm());
@@ -164,6 +167,7 @@
 
   function render() {
     const l = cur();
+    setTheme(l ? l.theme : 'pink'); // the page takes the colour of the list being shown
     // No row of list names up here: the panel shows the current list, and with several lists its name opens the switcher
     let h = top(true) + (viewing ? `<p class="viewing">Viewing <b>${esc(viewing.name)}</b>’s lists. Changes you make here change their lists.</p>` : '');
     const many = lists.length > 1;
@@ -210,7 +214,6 @@
     const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
     const item = id => cur().items.find(i => String(i.id) === id);
     on('logout', async () => { try { await api('POST', '/api/admin/logout', {}); } catch (_) {} login(); });
-    on('theme', themePicker);
     on('nav', () => { view = view === 'users' ? 'lists' : 'users'; viewing = null; lists = []; pick(null); refresh().catch(e => toast(problem(e))); });
     on('new-list', () => listForm());
     on('switch', listSwitcher);
@@ -231,19 +234,18 @@
     }));
   }
 
-  /* Tapping a colour shows it straight away and saves it for this user and their guest pages */
-  function themePicker() {
-    open(`<h2>Colour</h2><p>Your pages and the lists your guests open use this colour.</p>
-      <div class="swatches">${THEMES.map(([k, label]) => `<button type="button" class="swatch" data-theme="${k}" aria-pressed="${k === theme}"><i></i>${label}</button>`).join('')}</div>
+  /* Each list has its own colour. Tapping one shows it straight away and saves it for this list and its guest page. */
+  function themePicker(l) {
+    open(`<h2>List colour</h2><p>“${esc(l.name)}” and the page its guests open use this colour. Your other lists keep theirs.</p>
+      <div class="swatches">${THEMES.map(([k, label]) => `<button type="button" class="swatch" data-theme="${k}" aria-pressed="${k === l.theme}"><i></i>${label}</button>`).join('')}</div>
       <div class="actions"><button class="btn primary" data-close>Done</button></div>`, sh => {
+      const mark = () => sh.querySelectorAll('.swatch').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.theme === l.theme)));
       sh.querySelectorAll('.swatch').forEach(b => (b.onclick = async () => {
-        const before = theme;
-        theme = setTheme(b.dataset.theme);
-        sh.querySelectorAll('.swatch').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-        try { await call('PATCH', '/api/admin/me', { theme }); }
+        const before = l.theme;
+        l.theme = setTheme(b.dataset.theme); mark();
+        try { await call('PATCH', `/api/admin/lists/${l.id}/theme`, { theme: l.theme }); }
         catch (e) {
-          theme = setTheme(before);
-          sh.querySelectorAll('.swatch').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.theme === theme)));
+          l.theme = setTheme(before); mark();
           if (e.status !== 401) toast(problem(e));
         }
       }));
