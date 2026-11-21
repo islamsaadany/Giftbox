@@ -50,9 +50,10 @@ function limiter(max, windowMs) {
 }
 
 /* db: from ./db (query/tx/ready). photos: from ./photos (save/remove/url).
+   linkInfo: reads a shop page (./linkinfo); tests pass their own.
    admins: [{ name, password, admin }] from ADMIN_USERS (see ./admins). Those with admin !== false are
    the only ones who can create users. */
-function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '' }) {
+function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInfo = require('./linkinfo').linkInfo }) {
   // Address guests should use; empty means "whatever address the user is on"
   publicUrl = /^https?:\/\/[^\s/]+/.test(publicUrl) ? publicUrl.replace(/\/+$/, '') : '';
   const adminKeys = new Set((admins || []).filter(a => a.admin !== false).map(a => a.name.toLowerCase()));
@@ -236,6 +237,21 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '' }) {
     next();
   });
 
+  /* The item form asks what a shop page says about a gift: its picture, price and name.
+     linkInfo (./linkinfo) does the fetching and refuses private addresses. */
+  const linkLimit = limiter(60, 60 * 60 * 1000);
+  admin.post('/link-info', async (req, res) => {
+    const key = 'u' + req.user.id;
+    if (linkLimit.over(key)) throw new HttpError(429, 'too_many_attempts');
+    const link = text(req.body?.url, 2000, 'bad_link', true);
+    linkLimit.hit(key);
+    try { res.json(await linkInfo(link)); }
+    catch (e) {
+      if (e.code === 'bad_link') throw bad('bad_link');
+      if (e.code !== 'unreachable' && e.code !== 'too_big') console.error('link info failed', e);
+      throw new HttpError(422, 'unreachable');
+    }
+  });
 
   // The lists a user owns or collaborates on, with their items and reservations
   async function listsOf(userId) {
