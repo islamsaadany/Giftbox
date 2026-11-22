@@ -3,5 +3,6 @@
   "functions": {
     "api/index.js": { "includeFiles": "public/**", "maxDuration": 30 }
   },
+  "crons": [{ "path": "/api/cron/check-links", "schedule": "0 4 * * *" }],
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }

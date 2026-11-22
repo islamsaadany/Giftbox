@@ -88,6 +88,12 @@ a.btn{color:inherit;display:inline-block;text-decoration:none}
 .pill{font-size:11px;font-weight:600;border-radius:999px;padding:2px 7px;white-space:nowrap}
 .pill.ok{background:var(--ok-soft);color:var(--ok)}
 .pill.taken{background:var(--taken-soft);color:var(--taken)}
+/* a shop link that needs changing: the shop says out of stock, or the page is gone */
+.pill.alert{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}
+.lp-chip.alert,.lp-chip.alert b{color:var(--danger)}
+.lp-chip.alert[aria-pressed="true"]{background:var(--danger);color:#fff}
+.lp-chip.alert[aria-pressed="true"] b{color:inherit}
+.menu .btn small.alert,.field .hint.alert{color:var(--danger)}
 /* action buttons sit at the bottom of every card so they line up across a row */
 .row{display:flex;flex-direction:column;gap:6px;margin-top:auto}
 .row .btn{text-align:center;font-size:12px;padding:7px 8px}

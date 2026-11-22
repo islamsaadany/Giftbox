@@ -321,6 +321,60 @@ test('the item form can read a shop link, for signed-in users only', async () =>
   } finally { base = old; s4.close(); }
 });
 
+test('shop links are checked for stock, and the lists say which gifts need a new link', async () => {
+  const says = { 'https://shop.example/out': 'out', 'https://shop.example/gone': 'gone', 'https://shop.example/in': 'in', 'https://shop.example/new': 'in' };
+  const seen = [];
+  const linkStock = async link => { seen.push(link); if (link.includes('boom')) throw new Error('boom'); return says[link] ?? null; };
+  const open = opts => new Promise(r => { const s = createApp({ db, linkStock, photos: openPhotos({ dir: path.join(dataDir, 'photos') }), admins: [{ name: 'Alaa', password: 'correct horse' }], ...opts }).listen(0, () => r(s)); });
+  const s5 = await open(), s6 = await open({ cronSecret: 'cron-pass' });
+  const old = base; base = 'http://127.0.0.1:' + s5.address().port;
+  try {
+    await db.query('DELETE FROM login_failures');
+    assert.equal((await call('POST', '/api/admin/login', { name: 'Alaa', password: 'correct horse' })).status, 200);
+    await db.query('UPDATE items SET stock_checked_at = $1 WHERE shop_url IS NOT NULL', [Date.now()]); // gifts from the tests above: already checked today
+    const list = (await call('POST', '/api/admin/lists', { name: 'Stock list' })).body.id;
+    const add = async (name, link, qty) => (await call('POST', `/api/admin/lists/${list}/items`, { name, link, qty })).body.id;
+    const out = await add('Pram', 'https://shop.example/out'), gone = await add('Cot', 'https://shop.example/gone'), fine = await add('Bib', 'https://shop.example/in');
+    const quiet = await add('Rattle', 'https://shop.example/silent'), boom = await add('Mobile', 'https://shop.example/boom');
+    await add('No link');
+    const taken = await add('Blanket', 'https://shop.example/out');
+    const slug = (await call('GET', '/api/admin/lists')).body.lists.find(l => l.id === list).slug;
+    assert.equal((await call('POST', `/api/l/${slug}/items/${taken}/reserve`, { name: 'Mona', mobile: '01000000000' })).status, 201);
+    const stocks = async () => Object.fromEntries((await call('GET', '/api/admin/lists')).body.lists.find(l => l.id === list).items.map(i => [i.id, i.stock]));
+
+    // the daily run: every gift guests can still reserve, with a link
+    const run = await call('GET', '/api/cron/check-links', null, { auth: false });
+    assert.deepEqual([run.status, run.body], [200, { checked: 5, flagged: 2, waiting: 0 }]);
+    assert.deepEqual(seen.sort(), ['boom', 'gone', 'in', 'out', 'silent'].map(x => 'https://shop.example/' + x));
+    assert.deepEqual(await stocks(), { [out]: 'out', [gone]: 'gone', [fine]: '', [quiet]: '', [boom]: '', [taken]: '', [(await call('GET', '/api/admin/lists')).body.lists.find(l => l.id === list).items.find(i => i.name === 'No link').id]: '' });
+    // guests are not told
+    assert.equal((await call('GET', '/api/l/' + slug, null, { auth: false })).body.items.some(i => 'stock' in i), false);
+    // a second run the same day has nothing to do
+    assert.deepEqual((await call('GET', '/api/cron/check-links', null, { auth: false })).body, { checked: 0, flagged: 0, waiting: 0 });
+
+    // "Check shop links now" looks again; a shop that stops answering doesn't clear the warning, back in stock does
+    says['https://shop.example/out'] = null; says['https://shop.example/gone'] = 'in';
+    assert.deepEqual((await call('POST', `/api/admin/lists/${list}/check-links`, {})).body, { checked: 5, flagged: 0, waiting: 0 });
+    assert.deepEqual([(await stocks())[out], (await stocks())[gone]], ['out', '']);
+    // a new link starts clean and is picked up by the next run
+    assert.equal((await call('PATCH', '/api/admin/items/' + out, { name: 'Pram deluxe' })).status, 200);
+    assert.equal((await stocks())[out], 'out');
+    assert.equal((await call('PATCH', '/api/admin/items/' + out, { link: 'https://shop.example/new' })).status, 200);
+    assert.equal((await stocks())[out], '');
+    seen.length = 0;
+    assert.deepEqual((await call('GET', '/api/cron/check-links', null, { auth: false })).body, { checked: 1, flagged: 0, waiting: 0 });
+    assert.deepEqual(seen, ['https://shop.example/new']);
+
+    // signed-in users only, and only their own lists
+    assert.equal((await call('POST', `/api/admin/lists/${list}/check-links`, {}, { auth: false })).status, 401);
+    assert.equal((await call('POST', '/api/admin/lists/999999/check-links', {})).status, 404);
+    // with CRON_SECRET set, the run needs it
+    assert.equal((await fetch(`http://127.0.0.1:${s6.address().port}/api/cron/check-links`)).status, 401);
+    assert.equal((await fetch(`http://127.0.0.1:${s6.address().port}/api/cron/check-links`, { headers: { Authorization: 'Bearer wrong' } })).status, 401);
+    assert.equal((await fetch(`http://127.0.0.1:${s6.address().port}/api/cron/check-links`, { headers: { Authorization: 'Bearer cron-pass' } })).status, 200);
+  } finally { base = old; s5.close(); s6.close(); }
+});
+
 test('the app can ask which version is deployed', async () => {
   const v = await call('GET', '/api/version', null, { auth: false });
   assert.equal(v.status, 200);

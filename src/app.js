@@ -49,11 +49,15 @@ function limiter(max, windowMs) {
   };
 }
 
+const STOCK_RECHECK_MS = 20 * 60 * 60 * 1000; // the regular check looks at each shop link at most about once a day
+const STOCK_BUDGET_MS = 18000, STOCK_ITEM_MS = 9000, STOCK_PARALLEL = 5; // one run stays inside the 30 seconds a request gets
+
 /* db: from ./db (query/tx/ready). photos: from ./photos (save/remove/url).
-   linkInfo: reads a shop page (./linkinfo); tests pass their own.
+   linkInfo: reads a shop page (./linkinfo); tests pass their own. linkStock: says whether a shop page still has the product.
+   cronSecret: when set, the regular link check (/api/cron/check-links) only runs for callers that send it.
    admins: [{ name, password, admin }] from ADMIN_USERS (see ./admins). Those with admin !== false are
    the only ones who can create users. */
-function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInfo = require('./linkinfo').linkInfo }) {
+function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', cronSecret = '', linkInfo = require('./linkinfo').linkInfo, linkStock = require('./linkinfo').linkStock }) {
   // Address guests should use; empty means "whatever address the user is on"
   publicUrl = /^https?:\/\/[^\s/]+/.test(publicUrl) ? publicUrl.replace(/\/+$/, '') : '';
   const adminKeys = new Set((admins || []).filter(a => a.admin !== false).map(a => a.name.toLowerCase()));
@@ -253,11 +257,59 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInf
     }
   });
 
+  /* ---------- shop links: is the gift still in stock? ----------
+     Looks at the shop link of gifts guests can still reserve, the longest-unchecked first, and stores what the
+     shop says. A page that doesn't say (or can't be read) leaves the last known answer as it is.
+     One run takes as many as fit in its time; the next run carries on with the rest. */
+  async function checkLinks({ listId = null, olderThanMs = STOCK_RECHECK_MS, budgetMs = STOCK_BUDGET_MS } = {}) {
+    const started = Date.now();
+    const todo = await rows(`SELECT i.id, i.shop_url FROM items i
+      WHERE i.shop_url IS NOT NULL AND ($1::int IS NULL OR i.list_id = $1) AND (i.stock_checked_at IS NULL OR i.stock_checked_at <= $2)
+        AND i.quantity > COALESCE((SELECT SUM(count) FROM reservations r WHERE r.item_id = i.id), 0)
+      ORDER BY i.stock_checked_at NULLS FIRST, i.id LIMIT 300`, [listId, started - olderThanMs]);
+    let next = 0, checked = 0, flagged = 0;
+    const worker = async () => {
+      while (next < todo.length && Date.now() - started < budgetMs) {
+        const it = todo[next++];
+        let timer;
+        const stock = await Promise.race([
+          Promise.resolve().then(() => linkStock(it.shop_url)).catch(() => null),
+          new Promise(r => { timer = setTimeout(r, STOCK_ITEM_MS, null); }),
+        ]);
+        clearTimeout(timer);
+        // Only if the link is still the one that was checked
+        await db.query('UPDATE items SET stock = COALESCE($1::text, stock), stock_checked_at = $2 WHERE id = $3 AND shop_url = $4', [stock, Date.now(), it.id, it.shop_url]);
+        checked++;
+        if (stock === 'out' || stock === 'gone') flagged++;
+      }
+    };
+    await Promise.all(Array.from({ length: STOCK_PARALLEL }, worker));
+    return { checked, flagged, waiting: todo.length - next };
+  }
+  app.checkLinks = checkLinks;
+
+  // Called once a day by the host (see "crons" in vercel.json). Vercel sends CRON_SECRET as a bearer token when it is set.
+  app.get('/api/cron/check-links', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (cronSecret && !crypto.timingSafeEqual(sha(String(req.headers.authorization || '')), sha('Bearer ' + cronSecret))) throw new HttpError(401, 'not_allowed');
+    res.json(await checkLinks());
+  });
+
+  // "Check shop links now" for one list
+  const checkLimit = limiter(10, 60 * 60 * 1000);
+  admin.post('/lists/:id/check-links', async (req, res) => {
+    const listId = idParam(req.params.id), key = 'u' + req.user.id;
+    if (!(await one(`SELECT 1 AS ok FROM lists l WHERE l.id = $1 AND ${may(2, req)}`, [listId, req.user.id]))) throw new HttpError(404, 'not_found');
+    if (checkLimit.over(key)) throw new HttpError(429, 'too_many_attempts');
+    checkLimit.hit(key);
+    res.json(await checkLinks({ listId, olderThanMs: 0 }));
+  });
+
   // The lists a user owns or collaborates on, with their items and reservations
   async function listsOf(userId) {
     const [lists, items, resv, collabs] = await Promise.all([
       rows(`SELECT l.id, l.slug, l.name, l.note, l.theme, l.user_id, o.name AS owner FROM lists l LEFT JOIN users o ON o.id = l.user_id WHERE ${can(1)} ORDER BY l.created_at, l.id`, [userId]),
-      rows(`SELECT i.id, i.list_id, i.name, i.price_egp, i.quantity, i.shop_url, i.photo FROM items i JOIN lists l ON l.id = i.list_id WHERE ${can(1)} ORDER BY i.id DESC`, [userId]),
+      rows(`SELECT i.id, i.list_id, i.name, i.price_egp, i.quantity, i.shop_url, i.photo, i.stock FROM items i JOIN lists l ON l.id = i.list_id WHERE ${can(1)} ORDER BY i.id DESC`, [userId]),
       rows(`SELECT r.id, r.item_id, r.guest_name, r.guest_mobile, r.count, r.created_at FROM reservations r
             JOIN items i ON i.id = r.item_id JOIN lists l ON l.id = i.list_id WHERE ${can(1)} ORDER BY r.created_at, r.id`, [userId]),
       rows(`SELECT c.list_id, u.id, u.name FROM list_collaborators c JOIN users u ON u.id = c.user_id JOIN lists l ON l.id = c.list_id WHERE ${can(1)} ORDER BY u.name_key`, [userId]),
@@ -272,6 +324,7 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInf
       collaborators: collabs.filter(c => c.list_id === l.id).map(c => ({ id: c.id, name: c.name })),
       items: items.filter(i => i.list_id === l.id).map(i => ({
         id: i.id, name: i.name, price: i.price_egp, qty: i.quantity, link: i.shop_url || '', photo: photos.url(i.photo),
+        stock: i.shop_url && (i.stock === 'out' || i.stock === 'gone') ? i.stock : '', // '' = nothing to do about the link
         reservations: byItem.get(i.id) || [],
       })),
     }));
@@ -354,8 +407,10 @@ function createApp({ db, photos, admins, trustProxy = 1, publicUrl = '', linkInf
     let oldPhoto;
     try {
       await db.tx(async q => {
-        const it = (await q(`SELECT i.photo FROM items i JOIN lists l ON l.id = i.list_id WHERE i.id = $1 AND ${may(2, req)} FOR UPDATE OF i`, [id, req.user.id])).rows[0];
+        const it = (await q(`SELECT i.photo, i.shop_url FROM items i JOIN lists l ON l.id = i.list_id WHERE i.id = $1 AND ${may(2, req)} FOR UPDATE OF i`, [id, req.user.id])).rows[0];
         if (!it) throw new HttpError(404, 'not_found');
+        // A new link hasn't been checked yet: forget what the old one said
+        if (f.shop_url !== undefined && f.shop_url !== it.shop_url) { f.stock = null; f.stock_checked_at = null; }
         const reserved = (await q('SELECT COALESCE(SUM(count), 0)::int AS n FROM reservations WHERE item_id = $1', [id])).rows[0].n;
         if (f.quantity !== undefined && f.quantity < reserved) throw new HttpError(409, 'qty_below_reserved', { reserved });
         if (newPhoto !== undefined || b.photo === null) { f.photo = newPhoto ?? null; oldPhoto = it.photo; }

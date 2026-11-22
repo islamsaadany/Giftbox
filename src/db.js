@@ -40,6 +40,9 @@ const SCHEMA = `
     created_at BIGINT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS items_list ON items(list_id);
+  -- What the shop link said when it was last checked: 'in', 'out' (out of stock), 'gone' (page not found), or NULL (not known)
+  ALTER TABLE items ADD COLUMN IF NOT EXISTS stock TEXT;
+  ALTER TABLE items ADD COLUMN IF NOT EXISTS stock_checked_at BIGINT;
   CREATE TABLE IF NOT EXISTS reservations (
     id           SERIAL PRIMARY KEY,
     item_id      INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,

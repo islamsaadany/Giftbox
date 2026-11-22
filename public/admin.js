@@ -8,6 +8,10 @@
   const leftOf = it => Math.max(0, it.qty - resN(it));
   const priceLine = it => it.price === null ? '' : it.qty > 1 ? `${money(it.price)} <span class="each">each</span>` : money(it.price);
   const cur = () => lists.find(l => l.id === listId);
+  /* The shop link is checked about once a day. it.stock is "out" (the shop says out of stock) or "gone" (the page no longer
+     exists) while a gift guests can still reserve needs its link changed; otherwise it is empty. */
+  const needsLink = it => !!it.stock && leftOf(it) > 0;
+  const stockPill = it => needsLink(it) ? `<span class="pill alert">${it.stock === 'gone' ? 'Shop page not found' : 'Out of stock at shop'}</span>` : '';
   // Whether everything is allowed on this list (delete it, choose collaborators): its owner, or an admin working in a user's lists
   const full = l => l.mine || !!viewing;
   // The list's collaborators by name, without the signed-in user
@@ -113,7 +117,7 @@
   /* All the lists, to move between them (opened from the list's name, or from More) */
   function listSwitcher() {
     open(`<h2>${viewing ? esc(viewing.name) + '’s lists' : 'Your lists'}</h2><div class="menu">
-      ${lists.map(x => `<button class="btn" data-pick="${x.id}" aria-current="${x.id === listId}">${esc(x.name)}${x.mine || viewing ? '' : `<small>Shared by ${esc(x.owner)}</small>`}</button>`).join('')}
+      ${lists.map(x => `<button class="btn" data-pick="${x.id}" aria-current="${x.id === listId}">${esc(x.name)}${x.mine || viewing ? '' : `<small>Shared by ${esc(x.owner)}</small>`}${x.items.some(needsLink) ? `<small class="alert">${x.items.filter(needsLink).length} shop ${x.items.filter(needsLink).length === 1 ? 'link' : 'links'} to change</small>` : ''}</button>`).join('')}
       ${viewing ? '' : '<button class="btn ghost" id="sw-new">+ New list</button>'}
     </div><div class="actions"><button class="btn ghost" data-close>Close</button></div>`, sh => {
       sh.querySelectorAll('[data-pick]').forEach(b => (b.onclick = () => { close(); pick(Number(b.dataset.pick)); filter = 'all'; render(); scrollTo(0, 0); }));
@@ -136,6 +140,7 @@
       eye: ic('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
       plus: ic('<path d="M12 5v14M5 12h14"/>'),
       leave: ic('<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9"/>'),
+      check: ic('<path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v4h-4M8.5 12.5l2.5 2.5 4.5-5"/>'),
     };
     open(`<h2>${esc(l.name)}</h2><div class="menu">
       ${lists.length > 1 ? `<button class="btn ic" id="menu-switch">${icons.swap}Switch list</button>` : ''}
@@ -143,6 +148,7 @@
       <button class="btn ic" id="menu-colour">${icons.drop}List colour</button>
       ${full(l) ? `<button class="btn ic" id="collab">${icons.people}Collaborators</button>` : ''}
       <a class="btn ic" href="/l/${esc(l.slug)}#preview"${previewTab()} data-close>${icons.eye}Preview as guest</a>
+      ${l.items.some(i => i.link) ? `<button class="btn ic" id="menu-check">${icons.check}Check shop links now</button>` : ''}
       ${viewing ? '' : `<button class="btn ic" id="menu-new">${icons.plus}New list</button>`}
       ${full(l) ? '' : `<button class="btn ic danger" id="leave">${icons.leave}Leave list</button>`}
     </div><div class="actions"><button class="btn ghost" data-close>Close</button></div>`, sh => {
@@ -151,10 +157,23 @@
       on('menu-colour', () => themePicker(l));
       on('menu-switch', listSwitcher);
       on('menu-new', () => listForm());
+      on('menu-check', () => checkLinks(l));
       on('collab', () => collabForm());
       on('leave', () => { const l = cur(); confirmBox('Leave “' + l.name + '”?', 'You won’t see or edit this list any more. ' + l.owner + ' can add you again.', 'Leave list',
       () => act(() => call('DELETE', `/api/admin/lists/${l.id}/collaborators/${l.collaborators.find(c => c.name === me).id}`), 'You left the list')); });
     });
+  }
+
+  /* The links are checked by themselves about once a day; this does it straight away for one list */
+  async function checkLinks(l) {
+    toast('Checking the shop links…');
+    try {
+      const r = await call('POST', `/api/admin/lists/${l.id}/check-links`, {});
+      await refresh();
+      const n = (cur()?.id === l.id ? cur().items : []).filter(needsLink).length;
+      toast((n ? n + (n === 1 ? ' gift needs' : ' gifts need') + ' a new shop link' : 'No shop says out of stock')
+        + (r.waiting ? '. ' + r.waiting + ' more still to check: try again in a minute' : ''));
+    } catch (e) { if (e.status !== 401) toast(problem(e)); }
   }
 
   function statusPill(it) {
@@ -175,10 +194,12 @@
     if (!l) h += viewing ? `<div class="empty"><h3>No lists yet</h3>${esc(viewing.name)} hasn't created a list.</div>` : `<div class="empty"><h3>No lists yet</h3>Create your first list, then add the gifts you'd like.<div style="margin-top:14px"><button class="btn primary" id="new-list">+ New list</button></div></div>`;
     else {
       const taken = l.items.filter(i => leftOf(i) === 0).length, avail = l.items.length - taken;
-      const shown = l.items.filter(i => filter === 'all' || (filter === 'taken' ? resN(i) > 0 : leftOf(i) > 0))
+      const toFix = l.items.filter(needsLink).length;
+      if (filter === 'stock' && !toFix) filter = 'all';
+      const shown = l.items.filter(i => filter === 'all' || (filter === 'stock' ? needsLink(i) : filter === 'taken' ? resN(i) > 0 : leftOf(i) > 0))
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })); // A–Z, like the guest page
       // Each filter button carries the number of gifts it shows
-      const counts = { all: l.items.length, available: avail, taken: l.items.filter(i => resN(i) > 0).length };
+      const counts = { all: l.items.length, available: avail, taken: l.items.filter(i => resN(i) > 0).length, stock: toFix };
       const linkIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>';
       const eyeIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
       h += `<div id="lp-top"></div><div class="lp-stick"><section class="lpanel" id="lpanel">
@@ -186,7 +207,7 @@
         <button class="lp-more" id="more" aria-label="More actions for this list" aria-haspopup="dialog"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
         <button class="btn primary lp-add" id="add-item">+ Add item</button>
         <div class="lp-rule"></div>
-        <div class="lp-filters" role="group" aria-label="Filter">${[['all', 'All'], ['available', 'Available'], ['taken', 'Reserved']].map(([f, t]) => `<button class="lp-chip" data-filter="${f}" aria-pressed="${filter === f}">${t} <b>${counts[f]}</b></button>`).join('')}</div>
+        <div class="lp-filters" role="group" aria-label="Filter">${[['all', 'All'], ['available', 'Available'], ['taken', 'Reserved'], ...(toFix ? [['stock', 'Fix shop link']] : [])].map(([f, t]) => `<button class="lp-chip${f === 'stock' ? ' alert' : ''}" data-filter="${f}" aria-pressed="${filter === f}">${t} <b>${counts[f]}</b></button>`).join('')}</div>
         <div class="lp-links"><button class="lp-link lp-copy" id="copy-link">${linkIcon}Copy guest link</button><a class="lp-link lp-preview" href="/l/${esc(l.slug)}#preview"${previewTab()}>${eyeIcon}Preview</a></div>
         <div class="lp-slim" aria-hidden="true"><b>${esc(l.name)}</b>${caret}</div>
       </section></div><div id="lp-gap"></div>
@@ -198,7 +219,7 @@
       if (!l.items.length) h += `<div class="empty"><h3>This list is empty</h3>Tap “Add item” to add the first gift: a name, price, shop link and photo.</div>`;
       else if (!shown.length) h += `<div class="empty">Nothing here for this filter.</div>`;
       else h += `<div class="grid">${shown.map(it => `<article class="card">${pic(it)}<div class="card-body">
-        <div class="meta">${statusPill(it)}</div>
+        <div class="meta">${statusPill(it)}${stockPill(it)}</div>
         <h3>${esc(it.name)}</h3>
         <div class="price">${priceLine(it)}</div>
         ${it.reservations.length ? `<div class="who-list">${it.reservations.map(r => `<div class="who"><div><strong>${esc(r.name)}${it.qty > 1 ? ` · ×${r.count}` : ''}</strong><span class="num">${esc(r.mobile)}</span><span>${new Date(r.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></div><button class="rel" data-release="${it.id}|${r.id}">Release</button></div>`).join('')}</div>` : ''}
@@ -399,7 +420,7 @@
       <div class="two"><div class="field"><label for="ip">Price per piece (EGP)</label><input id="ip" type="number" inputmode="decimal" min="0" step="any" value="${it?.price ?? ''}"></div>
       <div class="field"><label for="iq">Quantity</label><input id="iq" type="number" inputmode="numeric" min="1" max="999" value="${it?.qty || 1}"></div></div>
       <div class="field"><label for="il">Shop link</label><input id="il" type="url" inputmode="url" placeholder="https://" maxlength="2000" value="${esc(it?.link || '')}">
-        <div class="linkrow"><button type="button" class="btn ghost" id="lfetch">Get picture and price from link</button><span class="hint" id="lst" role="status"></span></div></div>
+        <div class="linkrow"><button type="button" class="btn ghost" id="lfetch">Get picture and price from link</button><span class="hint" id="lst" role="status"></span></div>${it && needsLink(it) ? `<span class="hint alert" id="lstock">${it.stock === 'gone' ? 'The shop no longer has a page at this link.' : 'The shop says this is out of stock.'} Paste a link where guests can still buy it. If you keep this one, it is checked again every day and the warning goes when it is back.</span>` : ''}</div>
       <div class="field"><label for="iph">Picture</label><div class="photo-pick"><div class="thumb" id="th">${thumb(it?.photo)}</div>
         <div class="side"><input id="iph" type="file" accept="image/*"><button type="button" class="btn ghost" id="pph">Paste picture</button><button type="button" class="btn ghost" id="rmph" ${it?.photo ? '' : 'hidden'}>Remove picture</button></div></div>
         <span class="hint">The shop link can fill this in. Or copy a picture or screenshot and paste it here (Ctrl+V / ⌘V), or choose a file.</span></div>

@@ -17,6 +17,11 @@ const db = openDb({ url, dir: path.join(dataDir, 'pg') });
 const photos = openPhotos({ blobToken: process.env.BLOB_READ_WRITE_TOKEN, dir: path.join(dataDir, 'photos') });
 const port = Number(process.env.PORT) || 3000;
 
-const server = createApp({ db, photos, admins, publicUrl: process.env.PUBLIC_URL }).listen(port, () =>
+const app = createApp({ db, photos, admins, publicUrl: process.env.PUBLIC_URL, cronSecret: process.env.CRON_SECRET });
+// Vercel calls the link check once a day (vercel.json); here the server does it itself, a few minutes after starting and then hourly
+const checkLinks = () => db.ready().then(() => app.checkLinks()).catch(e => console.error('shop link check failed', e.message));
+setTimeout(checkLinks, 5 * 60 * 1000).unref();
+setInterval(checkLinks, 60 * 60 * 1000).unref();
+const server = app.listen(port, () =>
   console.log(`Wishbox on http://localhost:${port}  (sign in: /admin, database: ${url ? 'Postgres' : 'local, in ' + dataDir})`));
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => server.close(async () => { await db.close().catch(() => {}); process.exit(0); }));

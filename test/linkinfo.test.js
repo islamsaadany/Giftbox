@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const zlib = require('node:zlib');
-const { linkInfo, isPrivate, toPrice } = require('../src/linkinfo');
+const { linkInfo, linkStock, stockOf, isPrivate, toPrice } = require('../src/linkinfo');
 
 const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64)]);
 let server, base;
@@ -14,6 +14,8 @@ const pages = {
   '/jsonld': `<html><head><title>Monitor | Shop</title><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite"},
     {"@type":"Product","name":"Baby monitor","image":["${'IMG'}"],"offers":{"@type":"Offer","price":"2100","priceCurrency":"EGP"}}]}</script></head></html>`,
   '/usd': `<meta property="og:image" content="/missing.jpg"><meta property="og:price:amount" content="49.99"><meta property="og:price:currency" content="USD">`,
+  '/out': '<script type="application/ld+json">{"@type":"Product","name":"Pram","offers":{"@type":"Offer","price":"900","availability":"https://schema.org/OutOfStock"}}</script>',
+  '/in': '<meta property="product:availability" content="in stock">',
   '/plain': '<html><head><title>Just a page</title></head><body>No product here</body></html>',
 };
 test.before(async () => {
@@ -21,6 +23,8 @@ test.before(async () => {
     const path = req.url.split('?')[0];
     if (path === '/pic.jpg') return res.writeHead(200, { 'Content-Type': 'image/jpeg' }).end(JPEG);
     if (path === '/go') return res.writeHead(302, { Location: '/meta' }).end();
+    if (path === '/removed') return res.writeHead(410).end();
+    if (path === '/blocked') return res.writeHead(403).end();
     if (path === '/loop') return res.writeHead(302, { Location: '/loop' }).end();
     if (path === '/big.jpg') return res.writeHead(200, { 'Content-Type': 'image/jpeg' }).end(Buffer.alloc(4 * 1024 * 1024));
     if (path === '/gz') return res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Encoding': 'gzip' }).end(zlib.gzipSync(pages['/meta']));
@@ -63,4 +67,36 @@ test('prices in the formats shops write them', () => {
   for (const [v, n] of [['4,200.00', 4200], ['4.200,00', 4200], ['480', 480], ['EGP 1,299', 1299], ['12,50', 12.5], ['1.299', 1299], ['49.99', 49.99], [2100, 2100], ['1.234.567', 1234567]])
     assert.equal(toPrice(v), n, String(v));
   for (const v of ['', 'free', null, undefined, -5, NaN]) assert.equal(toPrice(v), null, String(v));
+});
+
+test('reads whether the shop still has the product', async () => {
+  const stock = path => linkStock(base + path, { allowPrivate: true });
+  assert.equal(await stock('/out'), 'out');
+  assert.equal(await stock('/in'), 'in');
+  assert.equal(await stock('/nope'), 'gone');    // 404: the page no longer exists
+  assert.equal(await stock('/removed'), 'gone');
+  // No answer is not "out of stock": a page that doesn't say, a shop that blocks the request, a link that can't be fetched
+  for (const path of ['/plain', '/meta', '/blocked', '/loop', '/pic.jpg']) assert.equal(await stock(path), null, path);
+  assert.equal(await linkStock('http://127.0.0.1/'), null);
+  assert.equal(await linkStock('not a link'), null);
+});
+
+test('availability in the ways shops publish it', () => {
+  const ld = o => `<script type="application/ld+json">${JSON.stringify(o)}</script>`;
+  const offer = a => ({ '@type': 'Offer', availability: a });
+  assert.equal(stockOf(ld({ '@type': 'Product', offers: offer('http://schema.org/SoldOut') })), 'out');
+  assert.equal(stockOf(ld({ '@type': 'Product', offers: offer('InStock') })), 'in');
+  assert.equal(stockOf(ld({ '@type': 'Product', offers: offer({ '@id': 'https://schema.org/Discontinued' }) })), 'out');
+  // one size left is still in stock; out only when every offer is out
+  assert.equal(stockOf(ld({ '@type': 'Product', offers: [offer('https://schema.org/OutOfStock'), offer('https://schema.org/InStock')] })), 'in');
+  assert.equal(stockOf(ld({ '@type': 'Product', offers: { '@type': 'AggregateOffer', offers: [offer('OutOfStock'), offer('OutOfStock')] } })), 'out');
+  assert.equal(stockOf(ld({ '@type': 'ProductGroup', hasVariant: [{ '@type': 'Product', offers: offer('OutOfStock') }, { '@type': 'Product', offers: offer('PreOrder') }] })), 'in');
+  // the page's own product decides, not a "you may also like" product listed after it
+  assert.equal(stockOf(ld([{ '@type': 'Product', offers: offer('OutOfStock') }, { '@type': 'Product', offers: offer('InStock') }])), 'out');
+  assert.equal(stockOf('<meta property="og:availability" content="Out of Stock">'), 'out');
+  assert.equal(stockOf('<meta property="product:availability" content="oos">'), 'out');
+  assert.equal(stockOf('<link itemprop="availability" href="https://schema.org/OutOfStock">'), 'out');
+  assert.equal(stockOf('<meta content="https://schema.org/InStock" itemprop="availability">'), 'in');
+  assert.equal(stockOf(ld({ '@type': 'Product', offers: { '@type': 'Offer', price: 5 } })), null);
+  assert.equal(stockOf('<p>Sorry, out of stock</p>'), null); // only what the page publishes as data
 });

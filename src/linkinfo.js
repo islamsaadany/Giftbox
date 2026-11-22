@@ -1,4 +1,5 @@
-/* Reads a shop page for the item form: its main picture, price and title.
+/* Reads a shop page for the item form: its main picture, price and title. Also reads whether the shop
+   still has the product (linkStock), for the regular check of every gift's shop link.
    The address comes from a signed-in user, so the fetch is fenced in: http(s) on the usual ports only,
    never to a private or local address (checked on the address actually connected to, on every redirect),
    with a time limit and size limits. */
@@ -28,7 +29,7 @@ function isPrivate(ip) {
   return !family || blocked.check(ip, family === 4 ? 'ipv4' : 'ipv6');
 }
 
-class LinkError extends Error { constructor(code) { super(code); this.code = code; } }
+class LinkError extends Error { constructor(code, status) { super(code); this.code = code; this.status = status; } }
 
 /* One GET without following redirects. Resolves { status, headers, body } with the body cut at maxBytes
    (cut: true), or rejects with a LinkError when overflow is "fail". */
@@ -80,7 +81,7 @@ async function fetchFollowing(start, opts) {
       try { url = new URL(r.headers.location, url); } catch { throw new LinkError('unreachable'); }
       continue;
     }
-    if (r.status < 200 || r.status >= 300) throw new LinkError('unreachable');
+    if (r.status < 200 || r.status >= 300) throw new LinkError('unreachable', r.status);
     return { ...r, url };
   }
   throw new LinkError('unreachable');
@@ -156,6 +157,55 @@ function readPage(html, base) {
   return { imageUrl, price, currency: currency.trim().toUpperCase().slice(0, 3), title: title.replace(/\s+/g, ' ').trim().slice(0, 80) };
 }
 
+/* ---------- is it still in stock? ---------- */
+const OUT = new Set(['outofstock', 'soldout', 'discontinued', 'oos']);
+const IN = new Set(['instock', 'limitedavailability', 'onlineonly', 'instoreonly', 'preorder', 'presale', 'backorder', 'availablefororder']);
+// "https://schema.org/OutOfStock", "out of stock", "OutOfStock" -> "out"; an in-stock value -> "in"; anything else -> null
+function availability(v) {
+  if (typeof v !== 'string') return null;
+  const k = v.trim().split(/[/#]/).pop().toLowerCase().replace(/[^a-z]/g, '');
+  return OUT.has(k) ? 'out' : IN.has(k) ? 'in' : null;
+}
+// Several offers (sizes, sellers): the product is out only when none of them has it
+const verdict = list => { const known = list.map(availability).filter(Boolean); return known.includes('in') ? 'in' : known.includes('out') ? 'out' : null; };
+
+/* What the page publishes about availability: "in", "out", or null when it doesn't say.
+   Read from schema.org product data first (the first product that says anything, with its variants),
+   then the Open Graph product tags, then microdata. */
+function stockOf(html) {
+  const offersOf = p => {
+    const out = [];
+    const walk = o => {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) return o.forEach(walk);
+      if (o.availability !== undefined) out.push(typeof o.availability === 'object' ? o.availability?.['@id'] : o.availability);
+      walk(o.offers);
+    };
+    walk(p.offers);
+    for (const v of [].concat(p.hasVariant || [])) if (v && typeof v === 'object') out.push(...offersOf(v));
+    return out;
+  };
+  for (const p of products(html)) { const v = verdict(offersOf(p)); if (v) return v; }
+  const meta = metas(html);
+  const fromMeta = verdict([meta.get('product:availability'), meta.get('og:availability')]);
+  if (fromMeta) return fromMeta;
+  for (const tag of html.match(/<(?:link|meta)\b[^>]*\bitemprop\s*=\s*["']?availability\b[^>]*>/gi) || []) {
+    const m = /\b(?:href|content)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+    const v = m && availability(m[1] ?? m[2] ?? m[3]);
+    if (v) return v;
+  }
+  return null;
+}
+
+/* Returns "in", "out", "gone" (the shop answers that the page no longer exists), or null when the page
+   doesn't say or can't be read (many shops block automated requests). Never throws. */
+async function linkStock(link, { allowPrivate = false } = {}) {
+  try {
+    const page = await fetchFollowing(new URL(link), { maxBytes: MAX_HTML, overflow: 'cut', accept: 'text/html,application/xhtml+xml,*/*;q=0.5', allowPrivate });
+    return isImage(page.headers) ? null : stockOf(page.body.toString('utf8'));
+  } catch (e) { return e.status === 404 || e.status === 410 ? 'gone' : null; }
+}
+
 const isImage = h => /^image\/(jpeg|png|webp|gif|avif)\b/i.test(String(h['content-type'] || ''));
 const dataUrl = r => `data:${String(r.headers['content-type']).split(';')[0].trim().toLowerCase()};base64,${r.body.toString('base64')}`;
 
@@ -178,4 +228,4 @@ async function linkInfo(link, { allowPrivate = false } = {}) {
   return { image, price: info.price, currency: info.currency, title: info.title };
 }
 
-module.exports = { linkInfo, LinkError, isPrivate, toPrice, readPage };
+module.exports = { linkInfo, linkStock, stockOf, LinkError, isPrivate, toPrice, readPage };

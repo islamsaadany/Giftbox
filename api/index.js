@@ -23,4 +23,4 @@ module.exports = missing.length
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.end('Wishbox is not set up yet. In the Vercel project, add: ' + missing.join('; ') + '. Then redeploy.');
     }
-  : createApp({ db: openDb({ url }), photos: openPhotos({ blobToken }), admins, trustProxy: true, publicUrl });
+  : createApp({ db: openDb({ url }), photos: openPhotos({ blobToken }), admins, trustProxy: true, publicUrl, cronSecret: process.env.CRON_SECRET });
